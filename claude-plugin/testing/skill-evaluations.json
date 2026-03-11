@@ -1,0 +1,51 @@
+[
+  {
+    "id": "eval-01",
+    "skills": ["using-asana-cli"],
+    "query": "Create a task called 'Fix login bug' assigned to Chris Christoff in the Outgoing Tasks project",
+    "expected_behavior": [
+      "Runs asana tasks create with -n, -a, and -p flags",
+      "Does not trigger interactive prompts",
+      "Reports the created task URL"
+    ]
+  },
+  {
+    "id": "eval-02",
+    "skills": ["using-asana-cli"],
+    "query": "Add Tom McFarlin as a follower to task 1234567890 and set the due date to next Friday",
+    "expected_behavior": [
+      "Runs asana tasks update with task ID, -f and -d flags",
+      "Resolves 'next Friday' to a YYYY-MM-DD date",
+      "Reports the updated task"
+    ]
+  },
+  {
+    "id": "eval-03",
+    "skills": ["using-asana-cli"],
+    "query": "What sections are in the Lindris project?",
+    "expected_behavior": [
+      "Runs asana projects sections Lindris",
+      "Displays the list of sections"
+    ]
+  },
+  {
+    "id": "eval-04",
+    "skills": ["troubleshooting-asana"],
+    "query": "asana tasks create is failing with 'unknown flag: --name'",
+    "expected_behavior": [
+      "Identifies the user is running upstream v1.2.0",
+      "Suggests rebuilding from ~/Code/asana-cli",
+      "Provides the go build command"
+    ]
+  },
+  {
+    "id": "eval-05",
+    "skills": ["using-asana-cli"],
+    "query": "Delete task 9876543210",
+    "expected_behavior": [
+      "Confirms with the user before deleting",
+      "Runs asana tasks delete 9876543210",
+      "Reports success"
+    ]
+  }
+]

@@ -1,0 +1,13 @@
+{
+  "name": "asana-cli",
+  "description": "Manage Asana tasks, Asana projects, and Asana workspace users via the asana CLI",
+  "owner": { "name": "jtsternberg" },
+  "plugins": [
+    {
+      "name": "asana-cli",
+      "source": "./claude-plugin",
+      "description": "Non-interactive Asana CLI for task management, project organization, and team collaboration",
+      "version": "1.0.0"
+    }
+  ]
+}

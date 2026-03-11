@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(asana auth *)",
+      "Bash(asana tasks *)",
+      "Bash(asana projects *)",
+      "Bash(asana users *)",
+      "Bash(asana workspaces *)",
+      "Bash(asana teams *)",
+      "Bash(asana tags *)",
+      "Bash(asana config *)",
+      "Bash(asana search *)"
+    ]
+  }
+}
