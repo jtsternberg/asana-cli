@@ -72,11 +72,17 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 					Results can be sorted according to your preference.
 				`),
 		Example: heredoc.Doc(`
-					# Search for milestone tasks assigned to you
-					$ asana tasks search --type milestone --assignee me --sort-asc
-		
-					# Search for tasks containing "UI refresh" not assigned to specific users
-					$ asana tasks search --query "UI refresh" --exclude-assignee 1234,5678 --tags-all 1234,4567
+					# Search for tasks assigned to you
+					$ asana tasks search --assignee me
+
+					# Search all tasks by keyword (no assignee filter)
+					$ asana tasks search --query "UI refresh"
+
+					# Search for tasks you created
+					$ asana tasks search --creator me
+
+					# Search with multiple filters
+					$ asana tasks search --query "deploy" --assignee me --sort-asc --limit 10
 				`),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if err := cmdutils.ValidateStringEnum("sort-by", opts.SortBy, validSortBy); err != nil {
@@ -112,12 +118,12 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 
 	cmd.Flags().StringVarP(&opts.Query, "query", "q", "", "Perform full-text search on task names and descriptions")
 	cmd.Flags().StringVar(&opts.Type, "type", "default_task", "Resource subtype to filter tasks (e.g., default_task, milestone)")
-	cmd.Flags().StringSliceVarP(&opts.Assignee, "assignee", "a", []string{"me"}, "Comma-separated list of assignee user IDs (e.g., 1234,me)")
+	cmd.Flags().StringSliceVarP(&opts.Assignee, "assignee", "a", nil, "Comma-separated list of assignee user IDs (e.g., me,1234). Omit to search all assignees")
 	cmd.Flags().StringSliceVar(&opts.ExcludeAssignee, "exclude-assignee", nil, "Comma separated list of user IDs to exclude from the search (e.g., 1234,5678)")
 	cmd.Flags().StringSliceVar(&opts.TagsAll, "tags-all", nil, "Comma-separated list of tags to include in the search")
 	cmd.Flags().BoolVar(&opts.SortAscending, "sort-asc", false, "Sort results in ascending order")
 	cmd.Flags().StringVar(&opts.SortBy, "sort-by", "modified_at", "Sort results by one of: due_date, created_at, completed_at, likes or modified_at")
-	cmd.Flags().StringSliceVar(&opts.CreatorAny, "creator-any", nil, "Comma-separated list of user IDs to include in the search")
+	cmd.Flags().StringSliceVar(&opts.CreatorAny, "creator", nil, "Comma-separated list of creator user IDs or 'me' (e.g., me,1234)")
 	cmd.Flags().StringSliceVar(&opts.ExcludeCreator, "exclude-creator", nil, "Comma-separated list of user IDs to exclude from the search")
 	cmd.Flags().BoolVar(&opts.Blocked, "is-blocked", false, "Filter to tasks with incomplete dependencies")
 	cmd.Flags().StringVar(&opts.DueOnBefore, "due-on-before", "", "Filter to tasks due before a specific date (YYYY-MM-DD)")
@@ -208,7 +214,11 @@ func runSearch(opts *SearchOptions) error {
 		return enc.Encode(out)
 	}
 
-	io.Printf("\nTasks assigned to %s:\n\n", cs.Bold(strings.Join(opts.Assignee, ", ")))
+	if len(opts.Assignee) > 0 {
+		io.Printf("\nTasks assigned to %s:\n\n", cs.Bold(strings.Join(opts.Assignee, ", ")))
+	} else {
+		io.Printf("\nSearch results:\n\n")
+	}
 
 	for i, task := range tasks {
 		io.Printf("%2d. [%s] %s (ID: %s)\n", i+1, format.Date(task.DueOn), task.Name, task.ID)
