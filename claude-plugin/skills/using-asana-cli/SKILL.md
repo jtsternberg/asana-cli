@@ -92,19 +92,67 @@ asana tasks view <task-id>
 
 Without a task ID, falls back to interactive selection.
 
-### List your tasks
+### List vs Search
+
+Use **`tasks list`** for a quick view of tasks assigned to a user. Use **`tasks search`** for anything more flexible — filtering by creator, tags, blocked status, date ranges, or keyword.
 
 ```bash
-asana tasks list [--sort due_on|created_at] [--limit 20] [--user me] [--json]
+# "My tasks" (assigned to me) — use list
+asana tasks list
+
+# "Tasks I created" — use search
+asana tasks search --creator me
+
+# "Tasks assigned to me about X" — use search
+asana tasks search --assignee me --query "X"
+```
+
+### List tasks
+
+Lists tasks assigned to a user (defaults to `me`). Cannot filter by creator — use `search` for that.
+
+```bash
+asana tasks list [--sort due|due-desc|asc|desc|created-at] [--limit 20] [--user me] [--json]
 ```
 
 ### Search tasks
 
+Flexible search across all tasks in the workspace.
+
 ```bash
-asana tasks search --query "search term" [--assignee me] [--creator me] [--sort-by due_date] [--due-on 2026-04-01] [--limit 10] [--json]
+# Tasks assigned to me
+asana tasks search --assignee me
+
+# Tasks I created (regardless of assignee)
+asana tasks search --creator me
+
+# Keyword search with limit
+asana tasks search --query "deploy" --limit 5
+
+# Blocked tasks due this week
+asana tasks search --is-blocked --due-on-after 2026-03-09 --due-on-before 2026-03-13
 ```
 
-**Note:** `--assignee` has no default — omit it to search across all assignees. Use `--creator me` to find tasks you created regardless of assignee.
+**Search flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--query` | `-q` | Full-text search on task names and descriptions |
+| `--assignee` | `-a` | Comma-separated assignee IDs or `me`. Omit to search all |
+| `--creator` | | Comma-separated creator IDs or `me` |
+| `--limit` | `-l` | Limit number of results |
+| `--sort-by` | | Sort by: `due_date`, `created_at`, `completed_at`, `likes`, `modified_at` (default: `modified_at`) |
+| `--sort-asc` | | Sort ascending (default is descending) |
+| `--due-on` | | Tasks due on exact date (`YYYY-MM-DD`) |
+| `--due-on-before` | | Tasks due before date |
+| `--due-on-after` | | Tasks due after date |
+| `--is-blocked` | | Only tasks with incomplete dependencies |
+| `--tags-all` | | Comma-separated tag IDs to filter by |
+| `--type` | | Resource subtype: `default_task`, `milestone` (default: `default_task`) |
+| `--exclude-assignee` | | Comma-separated user IDs to exclude |
+| `--exclude-creator` | | Comma-separated creator IDs to exclude |
+| `--json` | | Output as JSON |
+
+**Note:** `--assignee` has no default — omit it to search across all assignees.
 
 ## Structured Output
 

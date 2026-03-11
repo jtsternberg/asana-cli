@@ -209,6 +209,24 @@ For more usage:
 asana help # Show all available commands
 ```
 
+# Claude Code Plugin
+
+This repo includes a [Claude Code](https://claude.com/claude-code) plugin for AI-assisted Asana task management.
+
+## Installation
+
+```shell
+claude plugins add /path/to/asana-cli
+```
+
+## What's included
+
+- **Skills**: `using-asana-cli` (command reference), `troubleshooting-asana` (error diagnosis)
+- **Commands**: `/asana-create-task`, `/asana-update-task`, `/asana-delete-task`
+- **Agent**: `asana-task-manager` for autonomous task management
+
+The `asana` CLI must be installed and authenticated (`asana auth login`) before using the plugin.
+
 # Security
 
 To keep your Asana credentials safe, this CLI uses your system's keyring for secure token storage.
