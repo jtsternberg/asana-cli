@@ -304,6 +304,15 @@ func (t *Task) Update(client *Client, update *UpdateTaskRequest) error {
 	return err
 }
 
+type AddFollowersRequest struct {
+	Followers []string `json:"followers"`
+}
+
+func (t *Task) AddFollowers(client *Client, followerIDs []string) error {
+	client.trace("Adding followers to task %q", t.Name)
+	return client.post(fmt.Sprintf("/tasks/%s/addFollowers", t.ID), &AddFollowersRequest{Followers: followerIDs}, t)
+}
+
 func (t *Task) Delete(client *Client) error {
 	client.info("Deleting task %q", t.Name)
 
