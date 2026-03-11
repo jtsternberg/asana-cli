@@ -4,7 +4,7 @@ Create a new Asana task with full metadata.
 
 ## Usage
 
-/asana-cli:create-task [task description]
+/asana-cli:asana-create-task [task description]
 
 ## Arguments
 

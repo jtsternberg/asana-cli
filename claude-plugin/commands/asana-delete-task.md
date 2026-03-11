@@ -4,7 +4,7 @@ Permanently delete an Asana task.
 
 ## Usage
 
-/asana-cli:delete-task <task-id>
+/asana-cli:asana-delete-task <task-id>
 
 ## Arguments
 

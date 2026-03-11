@@ -4,7 +4,7 @@ Update an existing Asana task by its Asana task ID.
 
 ## Usage
 
-/asana-cli:update-task <task-id> [updates]
+/asana-cli:asana-update-task <task-id> [updates]
 
 ## Arguments
 
