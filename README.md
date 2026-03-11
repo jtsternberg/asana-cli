@@ -154,8 +154,9 @@ asana tasks update <task-id> \
 asana tasks view <task-id>              # View task details (or omit ID for interactive)
 asana tasks list                        # List all your tasks
 asana tasks list --sort due-desc        # Sort tasks by descending due date
-asana tasks search --assignee me        # Search tasks with filters
+asana tasks search --assignee me        # Search your assigned tasks
 asana tasks search --query "deploy" -l 5  # Search with limit
+asana tasks search --creator me         # Search tasks you created
 asana tasks delete <task-id>            # Delete a task by ID
 ```
 

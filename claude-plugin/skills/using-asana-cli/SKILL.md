@@ -101,8 +101,10 @@ asana tasks list [--sort due_on|created_at] [--limit 20] [--user me] [--json]
 ### Search tasks
 
 ```bash
-asana tasks search --query "search term" [--assignee me] [--sort-by due_date] [--due-on 2026-04-01] [--limit 10] [--json]
+asana tasks search --query "search term" [--assignee me] [--creator me] [--sort-by due_date] [--due-on 2026-04-01] [--limit 10] [--json]
 ```
+
+**Note:** `--assignee` has no default — omit it to search across all assignees. Use `--creator me` to find tasks you created regardless of assignee.
 
 ## Structured Output
 
