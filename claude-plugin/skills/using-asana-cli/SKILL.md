@@ -95,14 +95,28 @@ Without a task ID, falls back to interactive selection.
 ### List your tasks
 
 ```bash
-asana tasks list [--sort due_on|created_at] [--limit 20] [--user me]
+asana tasks list [--sort due_on|created_at] [--limit 20] [--user me] [--json]
 ```
 
 ### Search tasks
 
 ```bash
-asana tasks search --query "search term" [--assignee me] [--sort-by due_date] [--due-on 2026-04-01]
+asana tasks search --query "search term" [--assignee me] [--sort-by due_date] [--due-on 2026-04-01] [--limit 10] [--json]
 ```
+
+## Structured Output
+
+All task commands (`list`, `search`, `view`) support `--json` for machine-readable output. Use this for scripting and piping results between commands:
+
+```bash
+# Get task IDs from search results
+asana tasks search --query "deploy" --json
+
+# View a specific task as JSON
+asana tasks view <task-id> --json
+```
+
+Task IDs are also shown in the default text output of `list` and `search` (e.g., `(ID: 1234567890)`).
 
 ## Project Management
 

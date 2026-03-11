@@ -151,11 +151,24 @@ asana tasks update <task-id> \
 ### View, list, search, and delete tasks
 
 ```shell
-asana tasks view <task-id>         # View task details (or omit ID for interactive)
-asana tasks list                   # List all your tasks
-asana tasks list --sort due-desc   # Sort tasks by descending due date
-asana tasks search --assignee me   # Search tasks with filters
-asana tasks delete <task-id>       # Delete a task by ID
+asana tasks view <task-id>              # View task details (or omit ID for interactive)
+asana tasks list                        # List all your tasks
+asana tasks list --sort due-desc        # Sort tasks by descending due date
+asana tasks search --assignee me        # Search tasks with filters
+asana tasks search --query "deploy" -l 5  # Search with limit
+asana tasks delete <task-id>            # Delete a task by ID
+```
+
+Task IDs are shown in `list` and `search` output for easy use with other commands.
+
+### Structured output (JSON)
+
+All task commands (`list`, `search`, `view`) support `--json` for machine-readable output:
+
+```shell
+asana tasks list --json                 # JSON array of {id, name, due_on}
+asana tasks search --query "bug" --json # Search results as JSON
+asana tasks view <task-id> --json       # Full task details as JSON
 ```
 
 ### Name matching
