@@ -93,61 +93,100 @@ asana config get default-workspace
 asana config get dw
 ```
 
-## Basic Commands
+## Task Management
 
-View your tasks:
+### Create a task
+
+All commands support both interactive and non-interactive modes. Provide flags to skip prompts:
 
 ```shell
-asana tasks list # List all your tasks
-asana tasks list --sort due-desc # Sort tasks by descending due date
-asana tasks view # Interactive task viewer with details
-asana tasks update # Interactive task updater
+asana tasks create \
+  -n "Task name" \
+  -a "Assignee Name" \
+  -p "Project Name" \
+  -s "Section Name" \
+  -d "2025-04-01" \
+  -m "Task description" \
+  -f "Follower One,Follower Two"
 ```
 
-View tasks with filters:
+| Flag | Short | Required | Description |
+|------|-------|----------|-------------|
+| `--name` | `-n` | Yes* | Task name |
+| `--assignee` | `-a` | Yes* | Assignee name, ID, or `me` |
+| `--project` | `-p` | Yes* | Project name or ID |
+| `--section` | `-s` | No | Section name or ID (defaults to first section) |
+| `--due` | `-d` | No | Due date: `YYYY-MM-DD`, `today`, `tomorrow` |
+| `--description` | `-m` | No | Task description |
+| `--followers` | `-f` | No | Comma-separated follower names or IDs |
+| `--non-interactive` | | No | Explicitly prevent prompts; errors on missing fields |
+
+\*Required in non-interactive mode. When all three are provided, non-interactive mode is auto-detected.
+
+Without flags, the command falls back to interactive prompts.
+
+### Update a task
+
+Pass a task ID to use flags, or omit for interactive mode:
 
 ```shell
-asana tasks search --assignee me,12345678 # Search tasks by assignee and more filters
+asana tasks update <task-id> \
+  -n "New name" \
+  -d "2025-04-01" \
+  -a "New Assignee" \
+  -f "Follower Name" \
+  --complete
 ```
 
-Log, check and delete time entries on your tasks:
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--name` | `-n` | New task name |
+| `--description` | `-m` | New description |
+| `--due` | `-d` | New due date |
+| `--assignee` | `-a` | New assignee name or `me` |
+| `--followers` | `-f` | Comma-separated follower names to add |
+| `--complete` | | Mark task as completed |
+| `--non-interactive` | | Explicitly prevent prompts |
+
+### View, list, search, and delete tasks
 
 ```shell
-# Create a new time entry
-asana time create -m 23 --date 2025-01-06
-
-# Check time entries
-asana time status
-
-# Delete a time entry
-asana time delete
+asana tasks view <task-id>         # View task details (or omit ID for interactive)
+asana tasks list                   # List all your tasks
+asana tasks list --sort due-desc   # Sort tasks by descending due date
+asana tasks search --assignee me   # Search tasks with filters
+asana tasks delete <task-id>       # Delete a task by ID
 ```
 
-View the projects in your workspace:
+### Name matching
+
+All name-based flags (assignee, project, section, followers) support case-insensitive exact matching, partial/contains matching, and Asana GID matching. For example, `-a "Chris"` will match "Chris Christoff" if no exact "Chris" exists.
+
+## Time Tracking
 
 ```shell
-asana projects list # List all the projects
-asana projects list -l 25 --sort desc # List with options
+asana time create -m 23 --date 2025-01-06  # Log time
+asana time status                           # Check time entries
+asana time delete                           # Delete a time entry
 ```
 
-View the teams in your workspace:
+## Projects
 
 ```shell
-asana teams list # List all teams
+asana projects list                    # List all projects
+asana projects list -l 25 --sort desc  # List with options
+asana projects sections "Project Name" # List sections in a project
+asana projects tasks                   # List tasks in a project
+asana projects tasks --sections        # Group by section
 ```
 
-View the users in your workspace:
+## Teams, Users, and Tags
 
 ```shell
-asana users list # List all the users
-asana users list -l 25 --sort desc # List with options
-```
-
-View tags of your workspace:
-
-```shell
-asana tags list # List all tags
-asana tags list --favorite # List tags that you marked as favorite
+asana teams list                       # List all teams
+asana users list                       # List all users
+asana tags list                        # List all tags
+asana tags list --favorite             # List favorite tags
 ```
 
 For more usage:
