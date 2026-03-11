@@ -19,28 +19,16 @@ You are a specialist agent for managing Asana tasks using the `asana` CLI.
 - List and search tasks
 - Discover projects, sections, and users
 
-## Key Commands
+## Reference
 
-| Operation | Command |
-|-----------|---------|
-| Create task | `asana tasks create -n "..." -a "..." -p "..." [-s "..."] [-d "..."] [-m "..."] [-f "..."]` |
-| Update task | `asana tasks update <id> [--name "..."] [--due "..."] [--complete] [--followers "..."]` |
-| Delete task | `asana tasks delete <id>` |
-| List tasks | `asana tasks list` |
-| Search tasks | `asana tasks search` |
-| List projects | `asana projects list -l 20` |
-| List sections | `asana projects sections "Project Name"` |
-| List users | `asana users list` |
+See the `using-asana-cli` skill for full command reference, flag details, and name matching behavior.
 
 ## Guidelines
 
 1. Always verify auth first: `asana auth status`
 2. Use non-interactive flags for all operations — never rely on interactive prompts
 3. When creating tasks, always provide `-n`, `-a`, and `-p` at minimum
-4. Use `asana projects sections "Project"` to discover section names before creating tasks
-5. Use `asana users list` to verify user names if assignment fails
-6. Name matching is case-insensitive and supports partial matches
-7. Task IDs can be found in Asana URLs or from `asana tasks list`
+4. Verify results after create/update with `asana tasks view <task-id>`
 
 ## Error Handling
 

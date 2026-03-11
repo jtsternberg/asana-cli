@@ -87,19 +87,21 @@ asana tasks delete <task-id>
 ### View a task
 
 ```bash
-asana tasks view
+asana tasks view <task-id>
 ```
+
+Without a task ID, falls back to interactive selection.
 
 ### List your tasks
 
 ```bash
-asana tasks list
+asana tasks list [--sort due_on|created_at] [--limit 20] [--user me]
 ```
 
 ### Search tasks
 
 ```bash
-asana tasks search
+asana tasks search --query "search term" [--assignee me] [--sort-by due_date] [--due-on 2026-04-01]
 ```
 
 ## Project Management
@@ -135,38 +137,12 @@ asana users list
 
 ## Name Matching
 
-All name-based flags (assignee, project, section, followers) support:
-1. **Exact match** (case-insensitive)
-2. **Partial/contains match** (case-insensitive)
-3. **ID match** (Asana GID)
+Name flags support exact, partial, and ID matching (case-insensitive).
 
-For example, `-a "Chris"` will match "Chris Christoff" if no exact "Chris" exists.
+## Verification
 
-## Common Patterns
-
-### Create a task and add collaborators
+After creating or updating a task, verify by checking the returned output or running:
 
 ```bash
-asana tasks create \
-  -n "Review PR #42" \
-  -a me \
-  -p "Engineering" \
-  -f "Alice,Bob" \
-  -d tomorrow
-```
-
-### Batch update: complete multiple tasks
-
-```bash
-for id in 123 456 789; do
-  asana tasks update "$id" --complete
-done
-```
-
-### Discover sections before creating a task
-
-```bash
-asana projects sections "My Project"
-# Then use the section name in create:
-asana tasks create -n "..." -a me -p "My Project" -s "Sprint 5"
+asana tasks view <task-id>
 ```
