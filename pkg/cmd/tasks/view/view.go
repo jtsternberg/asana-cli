@@ -22,6 +22,8 @@ type ViewOptions struct {
 
 	Config func() (*config.Config, error)
 	Client func() (*asana.Client, error)
+
+	TaskID string
 }
 
 func NewCmdView(f factory.Factory, runF func(*ViewOptions) error) *cobra.Command {
@@ -33,15 +35,23 @@ func NewCmdView(f factory.Factory, runF func(*ViewOptions) error) *cobra.Command
 	}
 
 	cmd := &cobra.Command{
-		Use:   "view",
+		Use:   "view [task-id]",
 		Short: "View details of a specific task",
 		Example: heredoc.Doc(`
+				# Interactive: select from your tasks
 				$ asana tasks view
-				$ asana ts view`),
+
+				# Non-interactive: view by task ID
+				$ asana tasks view 1234567890
+				$ asana ts view 1234567890`),
 		Long: heredoc.Doc(`
-				Display detailed information about a specific task, allowing you to
-				analyze and manage it effectively.`),
+				Display detailed information about a specific task.
+				Pass a task ID to view it directly, or omit for interactive selection.`),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				opts.TaskID = args[0]
+			}
 			if runF != nil {
 				return runF(opts)
 			}
@@ -54,12 +64,22 @@ func NewCmdView(f factory.Factory, runF func(*ViewOptions) error) *cobra.Command
 }
 
 func viewRun(opts *ViewOptions) error {
-	cfg, err := opts.Config()
+	client, err := opts.Client()
 	if err != nil {
 		return err
 	}
 
-	client, err := opts.Client()
+	// Non-interactive: view by task ID
+	if opts.TaskID != "" {
+		task := &asana.Task{ID: opts.TaskID}
+		if err := task.Fetch(client); err != nil {
+			return fmt.Errorf("task %q not found: %w", opts.TaskID, err)
+		}
+		return displayDetails(client, task, opts.IO)
+	}
+
+	// Interactive: select from your tasks
+	cfg, err := opts.Config()
 	if err != nil {
 		return err
 	}
@@ -80,12 +100,7 @@ func viewRun(opts *ViewOptions) error {
 		return err
 	}
 
-	err = displayDetails(client, selectedTask, opts.IO)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return displayDetails(client, selectedTask, opts.IO)
 }
 
 func prompt(allTasks []*asana.Task, prompter prompter.Prompter) (*asana.Task, error) {
@@ -122,6 +137,10 @@ func displayDetails(client *asana.Client, task *asana.Task, io *iostreams.IOStre
 	)
 	fmt.Fprintf(io.Out, "%s\n", format.Tags(task.Tags))
 	fmt.Fprintln(io.Out, format.Notes(task.Notes))
+
+	if task.PermalinkURL != "" {
+		fmt.Fprintf(io.Out, "\n%s %s\n", cs.Gray("URL:"), task.PermalinkURL)
+	}
 
 	return nil
 }
