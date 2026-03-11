@@ -1,7 +1,11 @@
 package search
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
 	"github.com/timwehrle/asana/internal/api/asana"
@@ -10,7 +14,6 @@ import (
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
 	"github.com/timwehrle/asana/pkg/iostreams"
-	"strings"
 )
 
 type SearchOptions struct {
@@ -27,6 +30,8 @@ type SearchOptions struct {
 	CreatorAny      []string
 	ExcludeCreator  []string
 	Blocked         bool
+	Limit           int
+	JSON            bool
 	SortBy          string
 	DueOnBefore     string
 	DueOnAfter      string
@@ -120,6 +125,8 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 	cmd.Flags().StringVar(&opts.DueOn, "due-on", "", "Filter to tasks due on a specific date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.DueAtBefore, "due-at-before", "", "Filter to tasks due at or before a specific date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.DueAtAfter, "due-at-after", "", "Filter to tasks due at or after a specific date (YYYY-MM-DD)")
+	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the number of results")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	return cmd
 }
@@ -167,6 +174,10 @@ func runSearch(opts *SearchOptions) error {
 		return fmt.Errorf("failed searching tasks: %w", err)
 	}
 
+	if opts.Limit > 0 && len(tasks) > opts.Limit {
+		tasks = tasks[:opts.Limit]
+	}
+
 	if len(tasks) == 0 {
 		io.Println("No tasks found matching your criteria.")
 		io.Println("- Try broadening your search by removing some filters")
@@ -178,10 +189,29 @@ func runSearch(opts *SearchOptions) error {
 		return nil
 	}
 
+	if opts.JSON {
+		type jsonTask struct {
+			ID    string `json:"id"`
+			Name  string `json:"name"`
+			DueOn string `json:"due_on,omitempty"`
+		}
+		out := make([]jsonTask, len(tasks))
+		for i, t := range tasks {
+			jt := jsonTask{ID: t.ID, Name: t.Name}
+			if t.DueOn != nil {
+				jt.DueOn = time.Time(*t.DueOn).Format("2006-01-02")
+			}
+			out[i] = jt
+		}
+		enc := json.NewEncoder(io.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
 	io.Printf("\nTasks assigned to %s:\n\n", cs.Bold(strings.Join(opts.Assignee, ", ")))
 
 	for i, task := range tasks {
-		io.Printf("%2d. [%s] %s\n", i+1, format.Date(task.DueOn), task.Name)
+		io.Printf("%2d. [%s] %s (ID: %s)\n", i+1, format.Date(task.DueOn), task.Name, task.ID)
 	}
 
 	return nil

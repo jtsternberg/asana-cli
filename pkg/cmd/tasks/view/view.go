@@ -1,6 +1,7 @@
 package view
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -24,6 +25,7 @@ type ViewOptions struct {
 	Client func() (*asana.Client, error)
 
 	TaskID string
+	JSON   bool
 }
 
 func NewCmdView(f factory.Factory, runF func(*ViewOptions) error) *cobra.Command {
@@ -60,6 +62,8 @@ func NewCmdView(f factory.Factory, runF func(*ViewOptions) error) *cobra.Command
 		},
 	}
 
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
+
 	return cmd
 }
 
@@ -75,7 +79,7 @@ func viewRun(opts *ViewOptions) error {
 		if err := task.Fetch(client); err != nil {
 			return fmt.Errorf("task %q not found: %w", opts.TaskID, err)
 		}
-		return displayDetails(client, task, opts.IO)
+		return displayDetails(client, task, opts.IO, opts.JSON)
 	}
 
 	// Interactive: select from your tasks
@@ -100,7 +104,7 @@ func viewRun(opts *ViewOptions) error {
 		return err
 	}
 
-	return displayDetails(client, selectedTask, opts.IO)
+	return displayDetails(client, selectedTask, opts.IO, opts.JSON)
 }
 
 func prompt(allTasks []*asana.Task, prompter prompter.Prompter) (*asana.Task, error) {
@@ -120,12 +124,42 @@ func prompt(allTasks []*asana.Task, prompter prompter.Prompter) (*asana.Task, er
 	return allTasks[index], nil
 }
 
-func displayDetails(client *asana.Client, task *asana.Task, io *iostreams.IOStreams) error {
+func displayDetails(client *asana.Client, task *asana.Task, io *iostreams.IOStreams, jsonOutput bool) error {
 	cs := io.ColorScheme()
 
 	err := task.Fetch(client)
 	if err != nil {
 		return err
+	}
+
+	if jsonOutput {
+		type jsonTask struct {
+			ID           string   `json:"id"`
+			Name         string   `json:"name"`
+			DueOn        string   `json:"due_on,omitempty"`
+			Notes        string   `json:"notes,omitempty"`
+			Projects     []string `json:"projects,omitempty"`
+			Tags         []string `json:"tags,omitempty"`
+			PermalinkURL string   `json:"permalink_url,omitempty"`
+		}
+		jt := jsonTask{
+			ID:           task.ID,
+			Name:         task.Name,
+			Notes:        task.Notes,
+			PermalinkURL: task.PermalinkURL,
+		}
+		if task.DueOn != nil {
+			jt.DueOn = time.Time(*task.DueOn).Format("2006-01-02")
+		}
+		for _, p := range task.Projects {
+			jt.Projects = append(jt.Projects, p.Name)
+		}
+		for _, t := range task.Tags {
+			jt.Tags = append(jt.Tags, t.Name)
+		}
+		enc := json.NewEncoder(io.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(jt)
 	}
 
 	fmt.Fprintf(

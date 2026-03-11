@@ -1,7 +1,9 @@
 package list
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/timwehrle/asana/internal/config"
 
@@ -41,6 +43,7 @@ type ListOptions struct {
 	Sort  SortOption
 	Limit int
 	User  string
+	JSON  bool
 }
 
 func (o *ListOptions) ResolveUser() string {
@@ -90,6 +93,7 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 		StringVarP((*string)(&opts.Sort), "sort", "s", "", "Sort tasks by name, due date, creation date (options: asc, desc, due, due-desc, created-at)")
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the tasks to display")
 	cmd.Flags().StringVarP(&opts.User, "user", "u", "", "Show the task list of the provided user")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	return cmd
 }
@@ -124,6 +128,25 @@ func listRun(opts *ListOptions) error {
 	}
 
 	sortTasks(tasks, opts.Sort)
+
+	if opts.JSON {
+		type jsonTask struct {
+			ID    string `json:"id"`
+			Name  string `json:"name"`
+			DueOn string `json:"due_on,omitempty"`
+		}
+		out := make([]jsonTask, len(tasks))
+		for i, t := range tasks {
+			jt := jsonTask{ID: t.ID, Name: t.Name}
+			if t.DueOn != nil {
+				jt.DueOn = time.Time(*t.DueOn).Format("2006-01-02")
+			}
+			out[i] = jt
+		}
+		enc := json.NewEncoder(opts.IO.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
 
 	return printTasks(opts.IO, cfg.Username, tasks)
 }
@@ -202,10 +225,11 @@ func printTasks(io *iostreams.IOStreams, username string, tasks []*asana.Task) e
 	fmt.Fprintf(io.Out, "\nTasks for %s:\n\n", cs.Bold(username))
 
 	for i, task := range tasks {
-		fmt.Fprintf(io.Out, "%d. [%s] %s\n",
+		fmt.Fprintf(io.Out, "%d. [%s] %s (ID: %s)\n",
 			i+1,
 			format.Date(task.DueOn),
 			cs.Bold(task.Name),
+			task.ID,
 		)
 	}
 
