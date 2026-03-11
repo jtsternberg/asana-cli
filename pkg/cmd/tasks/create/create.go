@@ -21,10 +21,24 @@ type CreateOptions struct {
 	Config   func() (*config.Config, error)
 	Client   func() (*asana.Client, error)
 
-	Name        string
-	Assignee    string
-	Due         string
-	Description string
+	Name           string
+	Assignee       string
+	Due            string
+	Description    string
+	Project        string
+	Section        string
+	Followers      []string
+	NonInteractive bool
+}
+
+// isNonInteractive returns true when prompts should be suppressed.
+// Explicit --non-interactive flag takes priority, but we also infer it
+// when the required flags (name, assignee, project) are all provided.
+func (o *CreateOptions) isNonInteractive() bool {
+	if o.NonInteractive {
+		return true
+	}
+	return o.Name != "" && o.Assignee != "" && o.Project != ""
 }
 
 func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Command {
@@ -51,12 +65,17 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Assignee name or 'me'")
 	cmd.Flags().StringVarP(&opts.Due, "due", "d", "", "Due date (YYYY-MM-DD, 'today', 'tomorrow')")
 	cmd.Flags().StringVarP(&opts.Description, "description", "m", "", "Task description")
+	cmd.Flags().StringVarP(&opts.Project, "project", "p", "", "Project name or ID")
+	cmd.Flags().StringVarP(&opts.Section, "section", "s", "", "Section name or ID")
+	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs")
+	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
 
 	return cmd
 }
 
 func runCreate(opts *CreateOptions) error {
 	cs := opts.IO.ColorScheme()
+	ni := opts.isNonInteractive()
 
 	cfg, err := opts.Config()
 	if err != nil {
@@ -67,9 +86,12 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	// Get or prompt for task name
+	// --- Name ---
 	name := opts.Name
 	if name == "" {
+		if ni {
+			return fmt.Errorf("--name is required in non-interactive mode")
+		}
 		name, err = opts.Prompter.Input("Enter task name: ", "")
 		if err != nil {
 			return fmt.Errorf("failed to read task name: %w", err)
@@ -79,20 +101,29 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("task name cannot be empty")
 	}
 
-	// Get or prompt for assignee
-	assignee, err := getOrSelectAssignee(opts, cfg, client)
+	// --- Assignee ---
+	assignee, err := getOrSelectAssignee(opts, ni, cfg, client)
 	if err != nil {
 		return err
 	}
 
-	// Get or prompt for due date
-	dueDate, err := getOrPromptDueDate(opts)
-	if err != nil {
-		return err
+	// --- Due date (optional) ---
+	var dueDate *asana.Date
+	if opts.Due != "" {
+		dueDate, err = parseDueDate(opts.Due)
+		if err != nil {
+			return err
+		}
+	} else if !ni {
+		dueDate, err = promptDueDate(opts)
+		if err != nil {
+			return err
+		}
 	}
 
+	// --- Description (optional) ---
 	description := opts.Description
-	if description == "" {
+	if description == "" && !ni {
 		shouldPromptForDescription, err := opts.Prompter.Confirm("Add description?", "No")
 		if err == nil && shouldPromptForDescription {
 			description, err = addDescription(opts)
@@ -102,14 +133,20 @@ func runCreate(opts *CreateOptions) error {
 		}
 	}
 
-	// Prompt for project
-	project, err := getProject(opts, cfg.Workspace.ID, client)
+	// --- Project ---
+	project, err := getProject(opts, ni, cfg.Workspace.ID, client)
 	if err != nil {
 		return err
 	}
 
-	// Prompt for section
-	section, err := getSection(opts, project.ID, client)
+	// --- Section (defaults to first section when not specified in non-interactive mode) ---
+	section, err := getSection(opts, ni, project.ID, client)
+	if err != nil {
+		return err
+	}
+
+	// --- Followers (optional) ---
+	followerIDs, followerNames, err := resolveFollowers(opts, cfg, client)
 	if err != nil {
 		return err
 	}
@@ -122,11 +159,8 @@ func runCreate(opts *CreateOptions) error {
 		},
 		Workspace: cfg.Workspace.ID,
 		Assignee:  assignee.ID,
-
-		// Currently only one project is supported
-		Projects: []string{project.ID},
-
-		// Both project and section ID are expected
+		Followers: followerIDs,
+		Projects:  []string{project.ID},
 		Memberships: []*asana.CreateMembership{
 			{
 				Project: project.ID,
@@ -145,6 +179,9 @@ func runCreate(opts *CreateOptions) error {
 
 	opts.IO.Printf("%s Created task %s\n", cs.SuccessIcon, cs.Bold(task.Name))
 	opts.IO.Printf("  %s %s\n", cs.Gray("Assignee:"), assignee.Name)
+	if len(followerNames) > 0 {
+		opts.IO.Printf("  %s %s\n", cs.Gray("Followers:"), strings.Join(followerNames, ", "))
+	}
 	if task.DueOn != nil {
 		opts.IO.Printf("  %s %s\n", cs.Gray("Due:"), format.Date(task.DueOn))
 	}
@@ -155,19 +192,15 @@ func runCreate(opts *CreateOptions) error {
 	return nil
 }
 
-func getOrSelectAssignee(opts *CreateOptions, cfg *config.Config, client *asana.Client) (*asana.User, error) {
+func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, client *asana.Client) (*asana.User, error) {
 	ws := &asana.Workspace{ID: cfg.Workspace.ID}
 	users, _, err := ws.Users(client)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch users: %w", err)
 	}
 
-	// If flag provided
 	if opts.Assignee != "" {
-		// Handle 'me' shorthand
 		if strings.ToLower(opts.Assignee) == "me" {
-			// If no user ID in config, fetch current user
-			// This is needed because the user id may not be stored in config yet
 			if cfg.UserID == "" {
 				currentUser, err := client.CurrentUser()
 				if err != nil {
@@ -189,7 +222,7 @@ func getOrSelectAssignee(opts *CreateOptions, cfg *config.Config, client *asana.
 			}
 		}
 
-		// Try to match by name
+		// Try exact name match
 		assigneeLower := strings.ToLower(opts.Assignee)
 		for _, user := range users {
 			if strings.ToLower(user.Name) == assigneeLower {
@@ -197,7 +230,14 @@ func getOrSelectAssignee(opts *CreateOptions, cfg *config.Config, client *asana.
 			}
 		}
 
-		// Try to match by ID
+		// Try partial/contains match
+		for _, user := range users {
+			if strings.Contains(strings.ToLower(user.Name), assigneeLower) {
+				return user, nil
+			}
+		}
+
+		// Try ID match
 		for _, user := range users {
 			if user.ID == opts.Assignee {
 				return user, nil
@@ -205,6 +245,10 @@ func getOrSelectAssignee(opts *CreateOptions, cfg *config.Config, client *asana.
 		}
 
 		return nil, fmt.Errorf("assignee %q not found in workspace", opts.Assignee)
+	}
+
+	if ni {
+		return nil, fmt.Errorf("--assignee is required in non-interactive mode")
 	}
 
 	names := format.MapToStrings(users, func(u *asana.User) string {
@@ -218,19 +262,7 @@ func getOrSelectAssignee(opts *CreateOptions, cfg *config.Config, client *asana.
 	return users[selected], nil
 }
 
-func getOrPromptDueDate(opts *CreateOptions) (*asana.Date, error) {
-	input := opts.Due
-	if input == "" {
-		var err error
-		input, err = opts.Prompter.Input("Enter due date (YYYY-MM-DD), leave blank for none: ", "")
-		if err != nil {
-			return nil, fmt.Errorf("failed to read due date: %w", err)
-		}
-	}
-	if input == "" {
-		return nil, nil
-	}
-
+func parseDueDate(input string) (*asana.Date, error) {
 	now := time.Now()
 	switch strings.ToLower(input) {
 	case "today":
@@ -238,7 +270,6 @@ func getOrPromptDueDate(opts *CreateOptions) (*asana.Date, error) {
 	case "tomorrow":
 		return convert.ToDate(now.AddDate(0, 0, 1).Format(time.DateOnly), time.DateOnly)
 	}
-
 	due, err := convert.ToDate(input, time.DateOnly)
 	if err != nil {
 		return nil, fmt.Errorf("invalid due date %q: %w", input, err)
@@ -246,20 +277,51 @@ func getOrPromptDueDate(opts *CreateOptions) (*asana.Date, error) {
 	return due, nil
 }
 
+func promptDueDate(opts *CreateOptions) (*asana.Date, error) {
+	input, err := opts.Prompter.Input("Enter due date (YYYY-MM-DD), leave blank for none: ", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read due date: %w", err)
+	}
+	if input == "" {
+		return nil, nil
+	}
+	return parseDueDate(input)
+}
+
 func addDescription(opts *CreateOptions) (string, error) {
 	description, err := opts.Prompter.Editor("Enter task description: ", "")
 	if err != nil {
 		return "", fmt.Errorf("failed to read task description: %w", err)
 	}
-
 	return strings.TrimSpace(description), nil
 }
 
-func getProject(opts *CreateOptions, workspaceID string, client *asana.Client) (*asana.Project, error) {
+func getProject(opts *CreateOptions, ni bool, workspaceID string, client *asana.Client) (*asana.Project, error) {
 	ws := &asana.Workspace{ID: workspaceID}
 	projects, err := ws.AllProjects(client)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch projects: %w", err)
+	}
+
+	if opts.Project != "" {
+		projectLower := strings.ToLower(opts.Project)
+		// Exact match first
+		for _, p := range projects {
+			if strings.ToLower(p.Name) == projectLower || p.ID == opts.Project {
+				return p, nil
+			}
+		}
+		// Partial/contains match
+		for _, p := range projects {
+			if strings.Contains(strings.ToLower(p.Name), projectLower) {
+				return p, nil
+			}
+		}
+		return nil, fmt.Errorf("project %q not found in workspace", opts.Project)
+	}
+
+	if ni {
+		return nil, fmt.Errorf("--project is required in non-interactive mode")
 	}
 
 	names := format.MapToStrings(projects, func(p *asana.Project) string {
@@ -273,11 +335,36 @@ func getProject(opts *CreateOptions, workspaceID string, client *asana.Client) (
 	return projects[selected], nil
 }
 
-func getSection(opts *CreateOptions, projectID string, client *asana.Client) (*asana.Section, error) {
+func getSection(opts *CreateOptions, ni bool, projectID string, client *asana.Client) (*asana.Section, error) {
 	project := &asana.Project{ID: projectID}
 	sections, _, err := project.Sections(client)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch sections: %w", err)
+	}
+
+	if opts.Section != "" {
+		sectionLower := strings.ToLower(opts.Section)
+		// Exact match
+		for _, s := range sections {
+			if strings.ToLower(s.Name) == sectionLower || s.ID == opts.Section {
+				return s, nil
+			}
+		}
+		// Partial/contains match
+		for _, s := range sections {
+			if strings.Contains(strings.ToLower(s.Name), sectionLower) {
+				return s, nil
+			}
+		}
+		return nil, fmt.Errorf("section %q not found in project", opts.Section)
+	}
+
+	// In non-interactive mode, default to the first section
+	if ni {
+		if len(sections) == 0 {
+			return nil, fmt.Errorf("project has no sections")
+		}
+		return sections[0], nil
 	}
 
 	names := format.MapToStrings(sections, func(p *asana.Section) string {
@@ -289,4 +376,72 @@ func getSection(opts *CreateOptions, projectID string, client *asana.Client) (*a
 		return nil, fmt.Errorf("section selection failed: %w", err)
 	}
 	return sections[selected], nil
+}
+
+// resolveFollowers resolves follower names/IDs to user IDs.
+// Returns (followerIDs, followerNames, error).
+func resolveFollowers(opts *CreateOptions, cfg *config.Config, client *asana.Client) ([]string, []string, error) {
+	if len(opts.Followers) == 0 {
+		return nil, nil, nil
+	}
+
+	ws := &asana.Workspace{ID: cfg.Workspace.ID}
+	users, _, err := ws.Users(client)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot fetch users for follower resolution: %w", err)
+	}
+
+	var ids []string
+	var names []string
+
+	for _, f := range opts.Followers {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+
+		found := false
+		fLower := strings.ToLower(f)
+
+		// Exact name match
+		for _, u := range users {
+			if strings.ToLower(u.Name) == fLower {
+				ids = append(ids, u.ID)
+				names = append(names, u.Name)
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		// Partial/contains match
+		for _, u := range users {
+			if strings.Contains(strings.ToLower(u.Name), fLower) {
+				ids = append(ids, u.ID)
+				names = append(names, u.Name)
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		// ID match
+		for _, u := range users {
+			if u.ID == f {
+				ids = append(ids, u.ID)
+				names = append(names, u.Name)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, nil, fmt.Errorf("follower %q not found in workspace", f)
+		}
+	}
+
+	return ids, names, nil
 }
