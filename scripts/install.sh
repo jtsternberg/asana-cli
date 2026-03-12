@@ -9,7 +9,7 @@ command_exists() {
 
 # Defaults
 : "${BIN_DIR:=/usr/local/bin}"
-: "${API_URL:=https://api.github.com/repos/timwehrle/asana/releases/latest}"
+: "${API_URL:=https://api.github.com/repos/jtsternberg/asana-cli/releases/latest}"
 
 # Cleanup on exit
 TMPDIR=$(mktemp -d)
@@ -49,12 +49,12 @@ fi
 VERSION="${TAG#v}"
 
 FILENAME="asana_${OS}_${ARCH}.tar.gz"
-DOWNLOAD_URL="https://github.com/timwehrle/asana/releases/download/v${VERSION}/${FILENAME}"
+DOWNLOAD_URL="https://github.com/jtsternberg/asana-cli/releases/download/v${VERSION}/${FILENAME}"
 
 # Download
 echo "Downloading ${FILENAME}..."
 curl -fSL --progress-bar -o asana.tar.gz "$DOWNLOAD_URL" \
-  || die "Download failed. Check https://github.com/timwehrle/asana/releases"
+  || die "Download failed. Check https://github.com/jtsternberg/asana-cli/releases"
 
 # Extract
 tar -xzf asana.tar.gz || die "Failed to extract archive"

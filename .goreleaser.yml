@@ -12,9 +12,9 @@ release:
   header: |
     ## Release {{ .Version }}
 
-    For installation instructions, please visit our [documentation](https://github.com/timwehrle/asana#installation).
+    For installation instructions, please visit our [documentation](https://github.com/jtsternberg/asana-cli#installation).
   footer: |
-    **Full Changelog**: https://github.com/timwehrle/asana/compare/{{ .PreviousTag }}...{{ .Tag }}
+    **Full Changelog**: https://github.com/jtsternberg/asana-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
 builds:
   - env:
       - CGO_ENABLED=0
@@ -46,25 +46,6 @@ archives:
     format_overrides:
       - goos: windows
         formats: ["zip"]
-
-homebrew_casks:
-  - name: asana
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/asana"]
-          end
-    homepage: "https://github.com/timwehrle/asana"
-    description: "A command-line interface for managing Asana directly from your terminal."
-    license: "MIT"
-    commit_author:
-      name: timwehrle
-      email: hello@timwehrle.de
-    repository:
-      owner: timwehrle
-      name: homebrew-asana
-      branch: main
 
 changelog:
   use: github
@@ -103,8 +84,8 @@ checksum:
 
 nfpms:
   - license: MIT
-    maintainer: timwehrle
-    homepage: https://github.com/timwehrle/asana
+    maintainer: jtsternberg
+    homepage: https://github.com/jtsternberg/asana-cli
     dependencies:
       - git
     description: A command-line interface for managing Asana directly from your terminal.
