@@ -1,105 +1,92 @@
-<div align="center">
- <img width="300" height="300" src="https://github.com/user-attachments/assets/12bda636-36af-4d55-837d-f51fbe836ef1" alt="Asana Gopher" />
-
-_Image from <a href="https://gopherize.me/">https://gopherize.me/</a>_
-
-</div>
-
 # Asana CLI
 
-A command-line interface to manage your Asana tasks and projects directly from your terminal.
+A command-line interface for managing Asana tasks, projects, time tracking, and more — with both interactive and non-interactive (scriptable) modes.
 
-<div>
-    <a href="https://pkg.go.dev/github.com/timwehrle/asana">
-        <img src="https://pkg.go.dev/badge/github.com/timwehrle/asana.svg" alt="Go Reference">
-    </a>
-    <a href="https://github.com/timwehrle/asana/blob/main/LICENSE">
-        <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License">
-    </a>
-   <a href="https://github.com/timwehrle/asana/actions/workflows/go.yml">
-      <img src="https://github.com/timwehrle/asana/actions/workflows/go.yml/badge.svg" alt="Go Pipeline">
-   </a>
-   <a href="https://goreportcard.com/report/github.com/timwehrle/asana">
-      <img src="https://goreportcard.com/badge/github.com/timwehrle/asana" alt="Go Report Card">
-   </a>
-</div>
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Go Report Card](https://goreportcard.com/badge/github.com/timwehrle/asana)](https://goreportcard.com/report/github.com/timwehrle/asana)
 
-# Installation
+> [!NOTE]
+> This is a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana) with extended features: non-interactive CLI support, `--json` output, `tasks delete`, `projects sections`, fuzzy name matching, and a Claude Code plugin.
 
-## Pre-built binaries
+## Features
 
-Download the latest binary for your platform from the [releases page](https://github.com/timwehrle/asana/releases).
+- **Interactive and non-interactive modes** — use interactively with prompts, or pass flags for scripting and CI/CD
+- **Structured JSON output** — `--json` on `list`, `search`, and `view` for piping into `jq` or other tools
+- **Fuzzy name matching** — assignee, project, section, and follower flags match by partial name, exact name, or Asana GID
+- **Task CRUD** — create, view, update, delete, list, and search tasks
+- **Project management** — list projects, sections, and tasks (optionally grouped by section)
+- **Time tracking** — log time, check status, delete entries
+- **Teams, users, and tags** — list and filter workspace members and tags
+- **Secure credential storage** — system keyring integration (macOS, Linux, Windows, WSL2)
+- **Claude Code plugin** — AI-assisted task management with skills, commands, and an autonomous agent
 
-## From Source
+## Installation
 
-```shell
+### From Source
+
+```bash
 go install github.com/timwehrle/asana/cmd/asana@latest
 ```
 
-## Bash Installation
+### Pre-built Binaries
 
-```shell
-curl -sSL https://raw.githubusercontent.com/timwehrle/asana/main/scripts/install.sh | bash
-```
+Download from the [releases page](https://github.com/jtsternberg/asana-cli/releases).
 
-## Homebrew Installation
+### Homebrew
 
-```shell
+```bash
 brew tap timwehrle/asana
 brew install --formula asana
 ```
 
-## Having troubles with keyrings on WSL2?
+### Script Install
 
-If you're running into issues with keyring access on WSL2, there's a simple workaround!
-You can find a detailed explanation here: [https://github.com/XeroAPI/xoauth/issues/25#issuecomment-2364599936](https://github.com/XeroAPI/xoauth/issues/25#issuecomment-2364599936)
+```bash
+curl -sSL https://raw.githubusercontent.com/jtsternberg/asana-cli/main/scripts/install.sh | bash
+```
 
-To make development smoother, we've also provided a setup script.
-It installs the necessary packages and configures the GNOME keyring automatically. You probably have to do this every time you start your WSL2 environment.
+<details>
+<summary>WSL2 keyring setup</summary>
 
-```shell
+If you run into keyring issues on WSL2, see [this workaround](https://github.com/XeroAPI/xoauth/issues/25#issuecomment-2364599936). A setup script is also provided:
+
+```bash
 chmod +x scripts/setup-wsl-keyring.sh
 ./scripts/setup-wsl-keyring.sh
 ```
 
-After running the script, keyring functionality should be available in your WSL2 environment.
+</details>
 
-# Getting started
+## Quick Start
+
+```bash
+asana auth login                       # Authenticate with your Personal Access Token
+asana tasks list                       # List your tasks
+asana tasks create -n "Ship it" -a me -p "My Project"  # Create a task (no prompts)
+asana tasks search --query "deploy"    # Search across tasks
+asana tasks view <task-id> --json      # View task details as JSON
+```
 
 ## Authentication
 
-1. Get your Personal Access Token from Asana (Settings > Apps > Developer Apps)
-2. Run the login command:
-   ```shell
-   asana auth login
-   ```
-3. Follow the prompts to paste your token and select your default workspace.
-
-To check the current status of your authentication and the Asana API:
-
-```shell
-asana auth status
-```
+1. Get a Personal Access Token from Asana (Settings > Apps > Developer Apps)
+2. Run `asana auth login` and follow the prompts
+3. Check status with `asana auth status`
 
 ## Configuration
 
-Set or get your default workspace:
-
-```shell
-asana config set default-workspace
-asana config set dw
-
-asana config get default-workspace
-asana config get dw
+```bash
+asana config set default-workspace     # Set default workspace
+asana config get dw                    # Get current workspace (dw is shorthand)
 ```
 
 ## Task Management
 
-### Create a task
+### Create
 
 All commands support both interactive and non-interactive modes. Provide flags to skip prompts:
 
-```shell
+```bash
 asana tasks create \
   -n "Task name" \
   -a "Assignee Name" \
@@ -125,11 +112,11 @@ asana tasks create \
 
 Without flags, the command falls back to interactive prompts.
 
-### Update a task
+### Update
 
 Pass a task ID to use flags, or omit for interactive mode:
 
-```shell
+```bash
 asana tasks update <task-id> \
   -n "New name" \
   -d "2025-04-01" \
@@ -148,12 +135,12 @@ asana tasks update <task-id> \
 | `--complete` | | Mark task as completed |
 | `--non-interactive` | | Explicitly prevent prompts |
 
-### View, list, search, and delete tasks
+### View, List, Search, and Delete
 
-```shell
+```bash
 asana tasks view <task-id>              # View task details (or omit ID for interactive)
 asana tasks list                        # List all your tasks
-asana tasks list --sort due-desc        # Sort tasks by descending due date
+asana tasks list --sort due-desc        # Sort by descending due date
 asana tasks search --assignee me        # Search your assigned tasks
 asana tasks search --query "deploy" -l 5  # Search with limit
 asana tasks search --creator me         # Search tasks you created
@@ -162,23 +149,23 @@ asana tasks delete <task-id>            # Delete a task by ID
 
 Task IDs are shown in `list` and `search` output for easy use with other commands.
 
-### Structured output (JSON)
+### JSON Output
 
 All task commands (`list`, `search`, `view`) support `--json` for machine-readable output:
 
-```shell
+```bash
 asana tasks list --json                 # JSON array of {id, name, due_on}
 asana tasks search --query "bug" --json # Search results as JSON
 asana tasks view <task-id> --json       # Full task details as JSON
 ```
 
-### Name matching
+### Name Matching
 
 All name-based flags (assignee, project, section, followers) support case-insensitive exact matching, partial/contains matching, and Asana GID matching. For example, `-a "Chris"` will match "Chris Christoff" if no exact "Chris" exists.
 
 ## Time Tracking
 
-```shell
+```bash
 asana time create -m 23 --date 2025-01-06  # Log time
 asana time status                           # Check time entries
 asana time delete                           # Delete a time entry
@@ -186,7 +173,7 @@ asana time delete                           # Delete a time entry
 
 ## Projects
 
-```shell
+```bash
 asana projects list                    # List all projects
 asana projects list -l 25 --sort desc  # List with options
 asana projects sections "Project Name" # List sections in a project
@@ -196,30 +183,33 @@ asana projects tasks --sections        # Group by section
 
 ## Teams, Users, and Tags
 
-```shell
+```bash
 asana teams list                       # List all teams
 asana users list                       # List all users
 asana tags list                        # List all tags
 asana tags list --favorite             # List favorite tags
 ```
 
-For more usage:
+Run `asana help` for all available commands.
 
-```shell
-asana help # Show all available commands
-```
-
-# Claude Code Plugin
+## Claude Code Plugin
 
 This repo includes a [Claude Code](https://claude.com/claude-code) plugin for AI-assisted Asana task management.
 
-## Installation
+### Installation
 
-```shell
+In Claude Code:
+```
+/plugin marketplace add jtsternberg/asana-cli
+/plugin install asana-cli
+```
+
+Or point to your local copy:
+```
 claude plugins add /path/to/asana-cli
 ```
 
-## What's included
+### What's Included
 
 - **Skills**: `using-asana-cli` (command reference), `troubleshooting-asana` (error diagnosis)
 - **Commands**: `/asana-create-task`, `/asana-update-task`, `/asana-delete-task`
@@ -227,31 +217,10 @@ claude plugins add /path/to/asana-cli
 
 The `asana` CLI must be installed and authenticated (`asana auth login`) before using the plugin.
 
-# Security
+## Security
 
-To keep your Asana credentials safe, this CLI uses your system's keyring for secure token storage.
-This ensures your Personal Access Token is never written to disk in plain text. The keyring integration
-works across major platforms (macOS, Linux, and Windows), and includes WSL2 support with a setup script provided.
+Credentials are stored in your system's keyring — your Personal Access Token is never written to disk in plain text. Keyring integration works across macOS, Linux, Windows, and WSL2.
 
-## How to improve Token Security
+## License
 
-While keyrings are a secure option, here are some additional best practices you can consider:
-
-- **Token Rotation**: Regularly rotate your token and avoid long-lived secrets.
-- **Environment Isolation**: Avoid running this CLI in shared or untrusted environments.
-- **Two-Factor Authentication (2FA)**: Enable 2FA on your Asana account to enhance account-level security.
-
-We are also trying to implement a feature that will remind you to rotate your token every 90 (or so) days.
-
-# Contributing
-
-If something feels off, you see an opportunity to improve performance, or think some
-functionality is missing, we’d love to hear from you! Please review our [contributing docs][contributing] for
-detailed instructions on how to provide feedback or submit a pull request. Thank you!
-
-# License
-
-This project is licensed under the MIT License. See the [LICENSE][license] file for details.
-
-[contributing]: ./.github/CONTRIBUTING.md
-[license]: ./LICENSE
+MIT
