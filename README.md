@@ -22,16 +22,10 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 
 ## Installation
 
-### From Source
-
 ```bash
-go install github.com/timwehrle/asana/cmd/asana@latest
-```
-
-### Script Install
-
-```bash
-curl -sSL https://raw.githubusercontent.com/jtsternberg/asana-cli/main/scripts/install.sh | bash
+git clone https://github.com/jtsternberg/asana-cli.git
+cd asana-cli
+go install ./cmd/asana
 ```
 
 <details>
