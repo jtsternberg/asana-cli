@@ -3,6 +3,8 @@ package upgrade
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
@@ -29,7 +32,18 @@ const (
 	githubOwner = "jtsternberg"
 	githubRepo  = "asana-cli"
 	apiURL      = "https://api.github.com/repos/" + githubOwner + "/" + githubRepo + "/releases/latest"
+
+	// allowedDownloadURLPrefix restricts asset downloads to the official GitHub
+	// release CDN, preventing open-redirect-style attacks via tampered API responses.
+	allowedDownloadURLPrefix = "https://github.com/"
+
+	maxAPIResponseSize = 1 << 20   // 1 MiB — ample for a GitHub API response
+	maxBinarySize      = 150 << 20 // 150 MiB — generous upper bound for the CLI binary
 )
+
+// httpClient is the shared HTTP client. The 5-minute timeout guards against
+// stalled connections without being unreasonably short for large downloads.
+var httpClient = &http.Client{Timeout: 5 * time.Minute}
 
 // UpgradeOptions holds all options for the upgrade command.
 type UpgradeOptions struct {
@@ -103,16 +117,22 @@ func runUpgrade(opts *UpgradeOptions) error {
 	return upgradeFromBinary(opts)
 }
 
-// detectSourceInstall walks up from the current working directory looking for
-// the asana source root (a directory that contains both a .git folder and a
-// go.mod that declares the timwehrle/asana module). Returns the root path and
-// true when found.
+// detectSourceInstall walks up from the directory of the running executable
+// (not the current working directory) looking for the asana source root: a
+// directory that contains both a .git folder and cmd/asana/main.go.
+// Using os.Executable() prevents false positives when the user runs the
+// command from inside an unrelated project directory.
 func detectSourceInstall() (string, bool) {
-	dir, err := os.Getwd()
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", false
+	}
+	exePath, err = filepath.EvalSymlinks(exePath)
 	if err != nil {
 		return "", false
 	}
 
+	dir := filepath.Dir(exePath)
 	for {
 		if isAsanaSourceDir(dir) {
 			return dir, true
@@ -127,15 +147,16 @@ func detectSourceInstall() (string, bool) {
 	return "", false
 }
 
+// isAsanaSourceDir returns true when dir looks like the asana source checkout:
+// it must contain a .git directory AND cmd/asana/main.go.
+// Checking for the concrete source file is more robust than matching a module
+// path string, which could change across forks.
 func isAsanaSourceDir(dir string) bool {
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		return false
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
-	if err != nil {
-		return false
-	}
-	return strings.Contains(string(data), "github.com/timwehrle/asana")
+	_, err := os.Stat(filepath.Join(dir, "cmd", "asana", "main.go"))
+	return err == nil
 }
 
 // upgradeFromGit updates the CLI from a local git source clone.
@@ -247,16 +268,10 @@ func upgradeFromBinary(opts *UpgradeOptions) error {
 		return err
 	}
 
-	// Find matching asset.
-	downloadURL := ""
-	for _, a := range release.Assets {
-		if a.Name == assetName {
-			downloadURL = a.BrowserDownloadURL
-			break
-		}
-	}
-	if downloadURL == "" {
-		return fmt.Errorf("no release asset found for %s – check %s", assetName, release.HTMLURL)
+	// Find and validate the download URL for the platform asset.
+	downloadURL, err := findAndValidateAssetURL(release, assetName)
+	if err != nil {
+		return fmt.Errorf("no release asset found for %s – check %s: %w", assetName, release.HTMLURL, err)
 	}
 
 	// Confirm upgrade.
@@ -294,6 +309,12 @@ func upgradeFromBinary(opts *UpgradeOptions) error {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
+	// Verify SHA256 checksum before touching the filesystem with the new binary.
+	fmt.Fprintln(io.Out, "Verifying checksum...")
+	if err := verifyChecksum(release, tarballPath, assetName); err != nil {
+		return fmt.Errorf("checksum verification failed: %w", err)
+	}
+
 	// Extract binary from tarball.
 	newBinaryPath := filepath.Join(tmpDir, "asana")
 	if err := extractBinary(tarballPath, newBinaryPath); err != nil {
@@ -320,7 +341,7 @@ func fetchLatestRelease() (*githubRelease, error) {
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -331,7 +352,7 @@ func fetchLatestRelease() (*githubRelease, error) {
 	}
 
 	var release githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIResponseSize)).Decode(&release); err != nil {
 		return nil, err
 	}
 
@@ -369,9 +390,36 @@ func platformAssetName() (string, error) {
 	return fmt.Sprintf("asana_%s_%s.tar.gz", goos, arch), nil
 }
 
-// downloadFile downloads url to the given local path.
+// findAndValidateAssetURL returns the validated download URL for the asset with
+// the given exact name, or an error if not found or the URL is not from github.com.
+func findAndValidateAssetURL(release *githubRelease, name string) (string, error) {
+	for _, a := range release.Assets {
+		if a.Name == name {
+			if err := validateDownloadURL(a.BrowserDownloadURL); err != nil {
+				return "", err
+			}
+			return a.BrowserDownloadURL, nil
+		}
+	}
+	return "", fmt.Errorf("asset %q not found in release", name)
+}
+
+// validateDownloadURL ensures the URL points to the official GitHub release CDN.
+func validateDownloadURL(url string) error {
+	if !strings.HasPrefix(url, allowedDownloadURLPrefix) {
+		return fmt.Errorf("download URL %q is not from github.com", url)
+	}
+	return nil
+}
+
+// downloadFile downloads url to the given local path using the shared HTTP
+// client (which has a timeout). The download is bounded to maxBinarySize.
 func downloadFile(dest, url string) error {
-	resp, err := http.Get(url) //nolint:gosec // URL is from the official GitHub API response
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -387,11 +435,75 @@ func downloadFile(dest, url string) error {
 	}
 	defer f.Close()
 
-	_, err = io.Copy(f, resp.Body)
+	_, err = io.Copy(f, io.LimitReader(resp.Body, maxBinarySize))
 	return err
 }
 
+// verifyChecksum downloads the release checksums.txt, finds the expected SHA256
+// for assetName, and verifies it against the already-downloaded tarball.
+func verifyChecksum(release *githubRelease, tarballPath, assetName string) error {
+	// Find checksums asset URL using exact name match.
+	checksumURL, err := findAndValidateAssetURL(release, "checksums.txt")
+	if err != nil {
+		return fmt.Errorf("checksums.txt not found in release assets: %w", err)
+	}
+
+	// Download checksums file.
+	req, err := http.NewRequest(http.MethodGet, checksumURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d fetching checksums", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxAPIResponseSize))
+	if err != nil {
+		return err
+	}
+
+	// Parse checksums.txt for the expected hash.
+	expectedHash := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		parts := strings.Fields(line)
+		if len(parts) == 2 && parts[1] == assetName {
+			expectedHash = parts[0]
+			break
+		}
+	}
+	if expectedHash == "" {
+		return fmt.Errorf("checksum for %s not found in checksums.txt", assetName)
+	}
+
+	// Compute SHA256 of the downloaded tarball.
+	f, err := os.Open(tarballPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	actualHash := hex.EncodeToString(h.Sum(nil))
+
+	if actualHash != expectedHash {
+		return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", assetName, expectedHash, actualHash)
+	}
+
+	return nil
+}
+
 // extractBinary extracts the "asana" binary from a .tar.gz archive.
+// It rejects symlinks and hardlinks, and enforces a per-entry size limit
+// to protect against decompression bombs.
 func extractBinary(tarballPath, destPath string) error {
 	f, err := os.Open(tarballPath)
 	if err != nil {
@@ -415,10 +527,20 @@ func extractBinary(tarballPath, destPath string) error {
 			return err
 		}
 
+		// Reject any non-regular entries to prevent symlink/hardlink attacks.
+		if hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		// Guard against decompression bombs.
+		if hdr.Size > maxBinarySize {
+			return fmt.Errorf("archive entry %q is too large (%d bytes)", hdr.Name, hdr.Size)
+		}
+
 		// Look for the binary (top-level file named "asana" or "asana.exe").
 		base := filepath.Base(hdr.Name)
-		if hdr.Typeflag == tar.TypeReg && (base == "asana" || base == "asana.exe") {
-			return writeBinary(destPath, tr)
+		if base == "asana" || base == "asana.exe" {
+			return writeBinary(destPath, io.LimitReader(tr, maxBinarySize))
 		}
 	}
 
@@ -437,40 +559,46 @@ func writeBinary(destPath string, r io.Reader) error {
 }
 
 // replaceBinary replaces the target binary with the new one. It first tries a
-// direct rename; if that fails (e.g. cross-device), it copies the file instead.
+// direct rename; if that fails (e.g. cross-device), it copies via a temp file
+// created in the same directory (ensuring same filesystem for the rename).
 func replaceBinary(targetPath, newBinaryPath string) error {
-	// Try atomic rename first.
+	// Try atomic rename first (works when source and target are on the same FS).
 	if err := os.Rename(newBinaryPath, targetPath); err == nil {
 		return nil
 	}
 
-	// Fall back to copy + replace.
+	// Fall back: write into a temp file in the same directory so the final
+	// rename is guaranteed to be atomic and same-filesystem.
 	src, err := os.Open(newBinaryPath)
 	if err != nil {
 		return err
 	}
 	defer src.Close()
 
-	tmpTarget := targetPath + ".upgrade-tmp"
-	dst, err := os.OpenFile(tmpTarget, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	tmpFile, err := os.CreateTemp(filepath.Dir(targetPath), "asana-upgrade-*.tmp")
 	if err != nil {
 		return fmt.Errorf("cannot write to %s (try running with sudo): %w", targetPath, err)
 	}
+	tmpPath := tmpFile.Name()
 	defer func() {
-		dst.Close()
-		os.Remove(tmpTarget)
+		tmpFile.Close()
+		os.Remove(tmpPath)
 	}()
 
-	if _, err := io.Copy(dst, src); err != nil {
+	if err := tmpFile.Chmod(0o755); err != nil {
 		return err
 	}
-	dst.Close()
+	if _, err := io.Copy(tmpFile, src); err != nil {
+		return err
+	}
+	tmpFile.Close()
 
-	return os.Rename(tmpTarget, targetPath)
+	return os.Rename(tmpPath, targetPath)
 }
 
 // runHealthCheck executes the newly installed binary with --version to verify
-// it is working.
+// it is working. An error is returned so the caller knows the upgrade succeeded
+// but the health check failed.
 func runHealthCheck(opts *UpgradeOptions) error {
 	io := opts.IO
 	cs := io.ColorScheme()
@@ -482,8 +610,7 @@ func runHealthCheck(opts *UpgradeOptions) error {
 
 	out, err := exec.Command(exePath, "--version").Output()
 	if err != nil {
-		fmt.Fprintf(io.Out, "%s Health check failed: %v\n", cs.ErrorIcon, err)
-		return nil
+		return fmt.Errorf("%s health check failed: %w", cs.ErrorIcon, err)
 	}
 
 	version := strings.TrimSpace(string(out))
