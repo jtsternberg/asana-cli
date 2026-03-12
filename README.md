@@ -22,6 +22,18 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 
 ## Installation
 
+### Pre-built Binaries
+
+Download the latest binary for your platform from the [releases page](https://github.com/jtsternberg/asana-cli/releases).
+
+### Script Install
+
+```bash
+curl -sSL https://raw.githubusercontent.com/jtsternberg/asana-cli/main/scripts/install.sh | bash
+```
+
+### From Source
+
 ```bash
 git clone https://github.com/jtsternberg/asana-cli.git
 cd asana-cli
