@@ -33,12 +33,14 @@ const (
 	githubRepo  = "asana-cli"
 	apiURL      = "https://api.github.com/repos/" + githubOwner + "/" + githubRepo + "/releases/latest"
 
-	// allowedDownloadURLPrefix restricts asset downloads to the official GitHub
-	// release CDN, preventing open-redirect-style attacks via tampered API responses.
-	allowedDownloadURLPrefix = "https://github.com/"
+	// allowedDownloadURLPrefix restricts asset downloads to this specific
+	// repository's releases, preventing a tampered API response from redirecting
+	// to a different GitHub repo's release assets.
+	allowedDownloadURLPrefix = "https://github.com/" + githubOwner + "/" + githubRepo + "/"
 
 	maxAPIResponseSize = 1 << 20   // 1 MiB — ample for a GitHub API response
 	maxBinarySize      = 150 << 20 // 150 MiB — generous upper bound for the CLI binary
+	maxTarEntries      = 100       // guard against archives with millions of tiny entries
 )
 
 // httpClient is the shared HTTP client. The 5-minute timeout guards against
@@ -518,6 +520,7 @@ func extractBinary(tarballPath, destPath string) error {
 	defer gz.Close()
 
 	tr := tar.NewReader(gz)
+	entries := 0
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -525,6 +528,11 @@ func extractBinary(tarballPath, destPath string) error {
 		}
 		if err != nil {
 			return err
+		}
+
+		entries++
+		if entries > maxTarEntries {
+			return fmt.Errorf("archive contains too many entries (max %d)", maxTarEntries)
 		}
 
 		// Reject any non-regular entries to prevent symlink/hardlink attacks.

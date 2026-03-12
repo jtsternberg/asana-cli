@@ -144,6 +144,7 @@ func TestValidateDownloadURL(t *testing.T) {
 		{"invalid domain", "https://evil.example.com/asana.tar.gz", true},
 		{"http not https", "http://github.com/foo", true},
 		{"empty url", "", true},
+		{"different github repo", "https://github.com/other-owner/other-repo/releases/download/v1.0.0/asana.tar.gz", true},
 	}
 
 	for _, tt := range tests {
