@@ -1,5 +1,7 @@
 # Asana CLI
 
+<img src=".github/assets/Asana-Logo-Horizontal-Dark-Coral-SVG.svg" alt="Asana" width="120" align="right" />
+
 A command-line interface for managing Asana tasks, projects, time tracking, and more — with both interactive and non-interactive (scriptable) modes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
