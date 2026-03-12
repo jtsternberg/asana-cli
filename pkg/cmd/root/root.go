@@ -5,6 +5,7 @@ import (
 
 	"github.com/timwehrle/asana/pkg/cmd/teams"
 	"github.com/timwehrle/asana/pkg/cmd/time"
+	"github.com/timwehrle/asana/pkg/cmd/upgrade"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/timwehrle/asana/pkg/cmd/tags"
@@ -27,8 +28,8 @@ func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) 
 		Short: "The Asana CLI tool",
 		Long:  `Work with Asana from the command line.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Skip all checks for auth commands
-			if isAuthCommand(os.Args) {
+			// Skip all checks for auth and upgrade commands
+			if isNoAuthCommand(os.Args) {
 				return nil
 			}
 
@@ -45,8 +46,8 @@ func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) 
 	// Add auth command first
 	cmd.AddCommand(auth.NewCmdAuth(f))
 
-	// Only load config for non-auth commands
-	if !isAuthCommand(os.Args) {
+	// Only load config for non-auth/upgrade commands
+	if !isNoAuthCommand(os.Args) {
 		cfg, err := f.Config()
 		if err != nil {
 			return nil, err
@@ -72,6 +73,7 @@ func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) 
 	cmd.AddCommand(tags.NewCmdTags(f))
 	cmd.AddCommand(teams.NewCmdTeams(f))
 	cmd.AddCommand(time.NewCmdTimer(f))
+	cmd.AddCommand(upgrade.NewCmdUpgrade(f, nil))
 
 	cmd.SilenceErrors = true
 	cmd.SilenceUsage = true
@@ -91,10 +93,12 @@ func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) 
 	return cmd, nil
 }
 
-// isAuthCommand checks if the command being run is an auth command
-func isAuthCommand(args []string) bool {
+// isNoAuthCommand checks if the command being run does not need authentication
+// (auth and upgrade commands are exempt from the auth check).
+func isNoAuthCommand(args []string) bool {
 	if len(args) < 2 {
 		return false
 	}
-	return args[1] == "auth"
+	return args[1] == "auth" || args[1] == "upgrade"
 }
+
