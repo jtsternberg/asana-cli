@@ -6,7 +6,7 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 [![Go Report Card](https://goreportcard.com/badge/github.com/timwehrle/asana)](https://goreportcard.com/report/github.com/timwehrle/asana)
 
 > [!NOTE]
-> This is a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana) with extended features: non-interactive CLI support, `--json` output, `tasks delete`, `projects sections`, fuzzy name matching, and a Claude Code plugin.
+> This is a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana) with extended features: non-interactive CLI support, `--json` output, `tasks delete`, `projects sections`, fuzzy name matching, self-update command, and a Claude Code plugin.
 
 ## Features
 
@@ -17,6 +17,7 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 - **Project management** — list projects, sections, and tasks (optionally grouped by section)
 - **Time tracking** — log time, check status, delete entries
 - **Teams, users, and tags** — list and filter workspace members and tags
+- **Self-update** — `asana upgrade` detects your install method and updates in-place with checksum verification
 - **Secure credential storage** — system keyring integration (macOS, Linux, Windows, WSL2)
 - **Claude Code plugin** — AI-assisted task management with skills, commands, and an autonomous agent
 
@@ -60,6 +61,7 @@ asana tasks list                       # List your tasks
 asana tasks create -n "Ship it" -a me -p "My Project"  # Create a task (no prompts)
 asana tasks search --query "deploy"    # Search across tasks
 asana tasks view <task-id> --json      # View task details as JSON
+asana upgrade                          # Update to the latest version
 ```
 
 ## Authentication
@@ -186,6 +188,15 @@ asana tags list --favorite             # List favorite tags
 ```
 
 Run `asana help` for all available commands.
+
+## Upgrading
+
+```bash
+asana upgrade          # Auto-detects install method, confirms, upgrades
+asana upgrade --yes    # Skip confirmation (CI-friendly)
+```
+
+The command detects whether you installed from a git clone or a pre-built binary and updates accordingly. Binary downloads are verified against SHA256 checksums.
 
 ## Claude Code Plugin
 

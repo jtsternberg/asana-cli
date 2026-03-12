@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.0] - 2026-03-12
+
+### Added
+
+- **`upgrade` command** — self-update the CLI with `asana upgrade`. Detects git-source vs pre-built binary install method, downloads latest release with SHA256 checksum verification, hardened tar extraction, and atomic binary replacement. Supports `--yes` for non-interactive use.
+
 ## [2.0.0] - 2026-03-12
 
 First release as a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana).

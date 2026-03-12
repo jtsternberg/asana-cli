@@ -31,3 +31,4 @@ go.work.sum
 # Dolt database files (added by bd init)
 .dolt/
 *.db
+.claude/scheduled_tasks.lock
