@@ -108,17 +108,9 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	// --- Due date (optional) ---
-	var dueDate *asana.Date
-	if opts.Due != "" {
-		dueDate, err = parseDueDate(opts.Due)
-		if err != nil {
-			return err
-		}
-	} else if !ni {
-		dueDate, err = promptDueDate(opts)
-		if err != nil {
-			return err
-		}
+	dueDate, err := getOrPromptDueDate(opts)
+	if err != nil {
+		return err
 	}
 
 	// --- Description (optional) ---
@@ -260,6 +252,16 @@ func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, clien
 		return nil, fmt.Errorf("assignee selection failed: %w", err)
 	}
 	return users[selected], nil
+}
+
+func getOrPromptDueDate(opts *CreateOptions) (*asana.Date, error) {
+	if opts.Due != "" {
+		return parseDueDate(opts.Due)
+	}
+	if opts.NonInteractive {
+		return nil, nil
+	}
+	return promptDueDate(opts)
 }
 
 func parseDueDate(input string) (*asana.Date, error) {
