@@ -28,17 +28,6 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 go install github.com/timwehrle/asana/cmd/asana@latest
 ```
 
-### Pre-built Binaries
-
-Download from the [releases page](https://github.com/jtsternberg/asana-cli/releases).
-
-### Homebrew
-
-```bash
-brew tap timwehrle/asana
-brew install --formula asana
-```
-
 ### Script Install
 
 ```bash
