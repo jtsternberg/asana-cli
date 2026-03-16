@@ -5,7 +5,8 @@
 This is an **independent fork** of `timwehrle/asana` — NOT a contributor fork. The `upstream` remote exists only for pulling upstream changes.
 
 - **NEVER** create PRs against `timwehrle/asana` (the upstream repo)
-- **ALWAYS** create PRs against `jtsternberg/asana-cli` (this repo): `gh pr create --repo jtsternberg/asana-cli`
+- **ALWAYS** create PRs against `jtsternberg/asana-cli` (this repo)
+- The `gh` default repo is set to `jtsternberg/asana-cli` — `gh pr create` should Just Work
 - The canonical remote is `origin` → `jtsternberg/asana-cli`
 
 ## Issue Tracking

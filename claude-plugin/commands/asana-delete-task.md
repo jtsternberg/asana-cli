@@ -1,22 +1,13 @@
-# Delete Asana Task
+---
+allowed-tools: Bash(asana *)
+argument-hint: <task-id>
+description: Permanently delete an Asana task
+---
 
-Permanently delete an Asana task.
+Delete Asana task: $ARGUMENTS
 
-## Usage
-
-/asana-cli:asana-delete-task <task-id>
-
-## Arguments
-
-- `task-id` (required) - The Asana task ID
-
-## Instructions
-
-1. Confirm the task ID with the user before deleting
+1. Confirm the task ID with the user before deleting (this action is permanent and cannot be undone)
 2. Run: `asana tasks delete <task-id>`
 3. Report success or failure
 
-## Error Handling
-
-- If task not found, inform the user the ID may be wrong
-- This action is permanent and cannot be undone
+If task not found, inform the user the ID may be wrong.

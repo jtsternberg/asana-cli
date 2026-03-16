@@ -1,19 +1,12 @@
-# Update Asana Task
+---
+allowed-tools: Bash(asana *)
+argument-hint: <task-id> [changes in natural language]
+description: Update an existing Asana task by ID
+---
 
-Update an existing Asana task by its Asana task ID.
+Update Asana task based on: $ARGUMENTS
 
-## Usage
-
-/asana-cli:asana-update-task <task-id> [updates]
-
-## Arguments
-
-- `task-id` (required) - The Asana task ID or URL
-- `updates` (optional) - Natural language description of changes
-
-## Instructions
-
-1. Extract the task ID from the argument (if a URL, parse the ID from it)
+1. Extract the task ID from the first argument (if a URL, parse the ID from it)
 2. Parse requested changes: name, due date, assignee, followers, completion, description
 3. Run the update:
 
@@ -29,7 +22,4 @@ asana tasks update <task-id> \
 
 4. Report the result to the user
 
-## Error Handling
-
-- If task not found, ask the user to verify the ID
-- If user/assignee not found, run `asana users list` and suggest closest match
+If task not found, ask the user to verify the ID. If user/assignee not found, run `asana users list` and suggest closest match.
