@@ -5,6 +5,7 @@ import (
 	"github.com/timwehrle/asana/pkg/cmd/tasks/create"
 	"github.com/timwehrle/asana/pkg/cmd/tasks/delete"
 	"github.com/timwehrle/asana/pkg/cmd/tasks/list"
+	"github.com/timwehrle/asana/pkg/cmd/tasks/move"
 	"github.com/timwehrle/asana/pkg/cmd/tasks/search"
 	"github.com/timwehrle/asana/pkg/cmd/tasks/update"
 	"github.com/timwehrle/asana/pkg/cmd/tasks/view"
@@ -25,6 +26,7 @@ func NewCmdTasks(f factory.Factory) *cobra.Command {
 	cmd.AddCommand(search.NewCmdSearch(f, nil))
 	cmd.AddCommand(create.NewCmdCreate(f, nil))
 	cmd.AddCommand(delete.NewCmdDelete(f, nil))
+	cmd.AddCommand(move.NewCmdMove(f, nil))
 
 	return cmd
 }
