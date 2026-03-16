@@ -78,6 +78,25 @@ asana tasks update <task-id> \
 
 Without a task ID, falls back to interactive mode.
 
+### Move a task to a different project/section
+
+Move a task between projects without deleting and recreating it. Preserves task history, comments, and attachments:
+
+```bash
+asana tasks move <task-id> -p "Target Project" -s "Target Section"
+```
+
+**Flags:**
+| Flag | Short | Required | Description |
+|------|-------|----------|-------------|
+| `--project` | `-p` | Yes* | Target project name or ID |
+| `--section` | `-s` | No | Target section name or ID |
+| `--keep` | | No | Keep task in current project(s) too (add instead of move) |
+
+*Required in non-interactive mode. Provide task ID + `--project` for non-interactive; omit both for interactive prompts.
+
+**Important:** Always use `tasks move` instead of deleting and recreating a task when changing projects. This preserves the task's history, comments, followers, and attachments.
+
 ### Delete a task
 
 ```bash

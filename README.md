@@ -13,7 +13,7 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 - **Interactive and non-interactive modes** — use interactively with prompts, or pass flags for scripting and CI/CD
 - **Structured JSON output** — `--json` on `list`, `search`, and `view` for piping into `jq` or other tools
 - **Fuzzy name matching** — assignee, project, section, and follower flags match by partial name, exact name, or Asana GID
-- **Task CRUD** — create, view, update, delete, list, and search tasks
+- **Task CRUD + move** — create, view, update, delete, move, list, and search tasks
 - **Project management** — list projects, sections, and tasks (optionally grouped by section)
 - **Time tracking** — log time, check status, delete entries
 - **Teams, users, and tags** — list and filter workspace members and tags
@@ -131,6 +131,23 @@ asana tasks update <task-id> \
 | `--followers` | `-f` | Comma-separated follower names to add |
 | `--complete` | | Mark task as completed |
 | `--non-interactive` | | Explicitly prevent prompts |
+
+### Move
+
+Move a task to a different project and/or section — no delete/recreate needed:
+
+```bash
+asana tasks move <task-id> -p "Outgoing Tasks" -s "Tom"
+asana tasks move <task-id> -p "Outgoing Tasks" --keep  # also keep in current project(s)
+```
+
+| Flag | Short | Required | Description |
+|------|-------|----------|-------------|
+| `--project` | `-p` | Yes* | Target project name or ID |
+| `--section` | `-s` | No | Target section name or ID |
+| `--keep` | | No | Keep task in current project(s) too (add instead of move) |
+
+\*Required in non-interactive mode. Without a task ID or `--project`, falls back to interactive prompts.
 
 ### View, List, Search, and Delete
 

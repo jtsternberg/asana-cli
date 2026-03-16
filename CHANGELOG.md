@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`tasks move` command** — move tasks between projects and sections without delete/recreate. Supports `--project`, `--section`, and `--keep` flags with both interactive and non-interactive modes.
+
 ## [2.1.0] - 2026-03-12
 
 ### Added
