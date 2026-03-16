@@ -22,23 +22,23 @@ asana auth status      # Verify it's working
 claude plugins add /path/to/asana-cli
 ```
 
-## What's Included
+## Skills
 
-### Skills
+### User-invocable (slash commands)
 
 | Skill | Description |
 |-------|-------------|
-| `using-asana-cli` | Full command reference for all `asana` CLI operations |
-| `troubleshooting-asana` | Diagnoses auth failures, API errors, and CLI issues |
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
 | `/asana-create-task` | Create a new task with full metadata |
 | `/asana-update-task` | Update an existing task by ID |
 | `/asana-delete-task` | Permanently delete a task |
 | `/asana-move-task` | Move a task to a different project/section |
+
+### Auto-loaded (background knowledge)
+
+| Skill | Description |
+|-------|-------------|
+| `using-asana-cli` | Full command reference — Claude loads this automatically when working with Asana |
+| `troubleshooting-asana` | Diagnoses auth failures, API errors, and CLI issues |
 
 ### Agent
 
