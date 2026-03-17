@@ -1,10 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [2.2.0] - 2026-03-16
 
 ### Added
 
 - **`tasks move` command** — move tasks between projects and sections without delete/recreate. Supports `--project`, `--section`, and `--keep` flags with both interactive and non-interactive modes.
+- **`/asana-move-task` slash command** in the Claude Code plugin
+
+### Changed
+
+- **Claude plugin commands migrated to skills format** — all plugin commands now use `skills/<name>/SKILL.md` with proper YAML frontmatter, `$ARGUMENTS` placeholders, `allowed-tools`, and dynamic auth context injection per Claude Code best practices
+- **Background skills** (`using-asana-cli`, `troubleshooting-asana`) now use `user-invocable: false` so they auto-load without cluttering the `/` menu
 
 ## [2.1.0] - 2026-03-12
 
