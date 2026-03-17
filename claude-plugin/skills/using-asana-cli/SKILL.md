@@ -162,10 +162,10 @@ All task commands (`list`, `search`, `view`) support `--json` for machine-readab
 
 ```bash
 # Get all task IDs from search results
-asana tasks search --query "deploy" --json | jq '.[].gid'
+asana tasks search --query "deploy" --json | jq '.[].id'
 
 # Get task names and IDs
-asana tasks list --json | jq '.[] | {gid, name}'
+asana tasks list --json | jq '.[] | {id, name}'
 
 # Filter tasks by name pattern (case-insensitive)
 asana tasks list --json | jq '.[] | select(.name | test("keyword"; "i"))'
