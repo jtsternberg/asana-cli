@@ -38,6 +38,7 @@ type SearchOptions struct {
 	DueOn           string
 	DueAtBefore     string
 	DueAtAfter      string
+	ProjectsAny     []string
 }
 
 func (o *SearchOptions) join(ss []string) string {
@@ -80,6 +81,9 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 
 					# Search for tasks you created
 					$ asana tasks search --creator me
+
+					# Search tasks in a specific project
+					$ asana tasks search --project 1234567890
 
 					# Search with multiple filters
 					$ asana tasks search --query "deploy" --assignee me --sort-asc --limit 10
@@ -131,6 +135,7 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 	cmd.Flags().StringVar(&opts.DueOn, "due-on", "", "Filter to tasks due on a specific date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.DueAtBefore, "due-at-before", "", "Filter to tasks due at or before a specific date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.DueAtAfter, "due-at-after", "", "Filter to tasks due at or after a specific date (YYYY-MM-DD)")
+	cmd.Flags().StringSliceVarP(&opts.ProjectsAny, "project", "p", nil, "Comma-separated list of project IDs to filter tasks by (e.g., 1234,5678)")
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the number of results")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
@@ -169,10 +174,12 @@ func runSearch(opts *SearchOptions) error {
 		DueOn:           opts.DueOn,
 		DueAtBefore:     opts.DueAtBefore,
 		DueAtAfter:      opts.DueAtAfter,
+		ProjectsAny:     opts.join(opts.ProjectsAny),
 	}
 
 	options := &asana.Options{
 		Fields: []string{"name", "due_on"},
+		Limit:  opts.Limit,
 	}
 
 	tasks, err := workspace.SearchTasks(client, query, options)
@@ -180,7 +187,7 @@ func runSearch(opts *SearchOptions) error {
 		return fmt.Errorf("failed searching tasks: %w", err)
 	}
 
-	if opts.Limit > 0 && len(tasks) > opts.Limit {
+	if opts.Limit > 0 && len(tasks) >= opts.Limit {
 		tasks = tasks[:opts.Limit]
 	}
 

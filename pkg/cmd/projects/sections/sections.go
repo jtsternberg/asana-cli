@@ -88,7 +88,7 @@ func runSections(opts *SectionsOptions) error {
 	}
 
 	sections := make([]*asana.Section, 0, 20)
-	options := &asana.Options{}
+	options := &asana.Options{Limit: 100}
 	for {
 		batch, nextPage, err := project.Sections(client, options)
 		if err != nil {

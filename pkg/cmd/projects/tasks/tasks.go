@@ -1,8 +1,11 @@
 package tasks
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/MakeNowJust/heredoc"
 
 	"github.com/timwehrle/asana/internal/config"
@@ -15,6 +18,8 @@ import (
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
+const defaultPageSize = 100
+
 type TasksOptions struct {
 	IO       *iostreams.IOStreams
 	Prompter prompter.Prompter
@@ -22,7 +27,10 @@ type TasksOptions struct {
 	Config func() (*config.Config, error)
 	Client func() (*asana.Client, error)
 
+	ProjectName  string
 	WithSections bool
+	Limit        int
+	JSON         bool
 }
 
 type sectionTasks struct {
@@ -38,17 +46,37 @@ func NewCmdTasks(f factory.Factory, runF func(*TasksOptions) error) *cobra.Comma
 		Client:   f.Client,
 	}
 	cmd := &cobra.Command{
-		Use:   "tasks",
+		Use:   "tasks [project-name]",
 		Short: "List tasks of a project",
-		Long:  "Retrieve and display a list of all tasks under a project.",
-		Example: heredoc.Doc(`
-					# List all tasks of a project
-					$ asana project tasks
+		Long: heredoc.Doc(`
+			Retrieve and display a list of all tasks under a project.
 
-					# List tasks of a project with a specific section
-					$ asana project tasks --sections
-				`),
+			If a project name or ID is provided, it will be used directly.
+			Otherwise, you will be prompted to select a project interactively.
+		`),
+		Args: cobra.MaximumNArgs(1),
+		Example: heredoc.Doc(`
+			# List all tasks of a project by name
+			$ asana projects tasks "Outgoing Tasks"
+
+			# List tasks interactively (prompts for project)
+			$ asana projects tasks
+
+			# List tasks grouped by section
+			$ asana projects tasks "My Project" --sections
+
+			# Limit total tasks returned
+			$ asana projects tasks "My Project" --limit 50
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				opts.ProjectName = args[0]
+			}
+
+			if opts.Limit < 0 {
+				return fmt.Errorf("invalid limit: %v", opts.Limit)
+			}
+
 			if runF != nil {
 				return runF(opts)
 			}
@@ -58,6 +86,8 @@ func NewCmdTasks(f factory.Factory, runF func(*TasksOptions) error) *cobra.Comma
 	}
 
 	cmd.Flags().BoolVarP(&opts.WithSections, "sections", "s", false, "Group tasks by sections")
+	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the total number of tasks returned (0 = no limit)")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 	return cmd
 }
 
@@ -99,6 +129,12 @@ func selectProject(
 		return nil, errors.New("no projects found")
 	}
 
+	// If a project name/ID was provided, find it directly
+	if opts.ProjectName != "" {
+		return findProject(projects, opts.ProjectName)
+	}
+
+	// Otherwise, prompt interactively
 	projectNames := make([]string, len(projects))
 	for i, project := range projects {
 		projectNames[i] = project.Name
@@ -112,9 +148,29 @@ func selectProject(
 	return projects[index], nil
 }
 
+func findProject(projects []*asana.Project, name string) (*asana.Project, error) {
+	nameLower := strings.ToLower(name)
+
+	// Exact match on name or ID
+	for _, p := range projects {
+		if strings.ToLower(p.Name) == nameLower || p.ID == name {
+			return p, nil
+		}
+	}
+
+	// Fuzzy match (contains)
+	for _, p := range projects {
+		if strings.Contains(strings.ToLower(p.Name), nameLower) {
+			return p, nil
+		}
+	}
+
+	return nil, fmt.Errorf("project %q not found in workspace", name)
+}
+
 func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
 	tasks := make([]*asana.Task, 0, 50)
-	options := &asana.Options{}
+	options := &asana.Options{Limit: defaultPageSize}
 
 	for {
 		batch, nextPage, err := project.Tasks(client, options)
@@ -123,6 +179,11 @@ func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Proje
 		}
 
 		tasks = append(tasks, batch...)
+
+		if opts.Limit > 0 && len(tasks) >= opts.Limit {
+			tasks = tasks[:opts.Limit]
+			break
+		}
 
 		if nextPage == nil || nextPage.Offset == "" {
 			break
@@ -136,7 +197,7 @@ func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Proje
 
 func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
 	sections := make([]*asana.Section, 0, 20)
-	options := &asana.Options{}
+	options := &asana.Options{Limit: defaultPageSize}
 
 	for {
 		batch, nextPage, err := project.Sections(client, options)
@@ -155,9 +216,10 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 
 	sectionsWithTasks := make([]sectionTasks, 0, len(sections))
 
+	totalTasks := 0
 	for _, section := range sections {
 		tasks := make([]*asana.Task, 0, 50)
-		options := &asana.Options{}
+		options := &asana.Options{Limit: defaultPageSize}
 
 		for {
 			batch, nextPage, err := section.Tasks(client, options)
@@ -167,6 +229,12 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 
 			tasks = append(tasks, batch...)
 
+			if opts.Limit > 0 && totalTasks+len(tasks) >= opts.Limit {
+				remaining := min(opts.Limit-totalTasks, len(tasks))
+				tasks = tasks[:remaining]
+				break
+			}
+
 			if nextPage == nil || nextPage.Offset == "" {
 				break
 			}
@@ -174,16 +242,41 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 			options.Offset = nextPage.Offset
 		}
 
+		totalTasks += len(tasks)
 		sectionsWithTasks = append(sectionsWithTasks, sectionTasks{
 			section: section,
 			tasks:   tasks,
 		})
+
+		if opts.Limit > 0 && totalTasks >= opts.Limit {
+			break
+		}
 	}
 
 	return displayTasksBySection(opts, project, sectionsWithTasks)
 }
 
+type jsonTask struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type jsonSectionTasks struct {
+	Section string     `json:"section"`
+	Tasks   []jsonTask `json:"tasks"`
+}
+
 func displayTasks(opts *TasksOptions, project *asana.Project, tasks []*asana.Task) error {
+	if opts.JSON {
+		out := make([]jsonTask, len(tasks))
+		for i, t := range tasks {
+			out[i] = jsonTask{ID: t.ID, Name: t.Name}
+		}
+		enc := json.NewEncoder(opts.IO.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
 	cs := opts.IO.ColorScheme()
 	out := opts.IO.Out
 
@@ -195,7 +288,7 @@ func displayTasks(opts *TasksOptions, project *asana.Project, tasks []*asana.Tas
 	}
 
 	for i, task := range tasks {
-		fmt.Fprintf(out, "%d. %s\n", i+1, cs.Bold(task.Name))
+		fmt.Fprintf(out, "%d. %s (ID: %s)\n", i+1, cs.Bold(task.Name), task.ID)
 	}
 
 	return nil
@@ -206,6 +299,20 @@ func displayTasksBySection(
 	project *asana.Project,
 	sections []sectionTasks,
 ) error {
+	if opts.JSON {
+		out := make([]jsonSectionTasks, len(sections))
+		for i, st := range sections {
+			tasks := make([]jsonTask, len(st.tasks))
+			for j, t := range st.tasks {
+				tasks[j] = jsonTask{ID: t.ID, Name: t.Name}
+			}
+			out[i] = jsonSectionTasks{Section: st.section.Name, Tasks: tasks}
+		}
+		enc := json.NewEncoder(opts.IO.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
 	cs := opts.IO.ColorScheme()
 	out := opts.IO.Out
 
@@ -224,7 +331,7 @@ func displayTasksBySection(
 		}
 
 		for i, task := range st.tasks {
-			fmt.Fprintf(out, "  %d. %s\n", i+1, task.Name)
+			fmt.Fprintf(out, "  %d. %s (ID: %s)\n", i+1, task.Name, task.ID)
 		}
 		fmt.Fprintln(out)
 	}
