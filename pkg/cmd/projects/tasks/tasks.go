@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/MakeNowJust/heredoc"
 
@@ -195,6 +196,8 @@ func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Proje
 	return displayTasks(opts, project, tasks)
 }
 
+const sectionConcurrency = 5
+
 func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
 	sections := make([]*asana.Section, 0, 20)
 	options := &asana.Options{Limit: defaultPageSize}
@@ -214,32 +217,60 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 		options.Offset = nextPage.Offset
 	}
 
+	type fetchResult struct {
+		tasks []*asana.Task
+		err   error
+	}
+
+	results := make([]fetchResult, len(sections))
+	sem := make(chan struct{}, sectionConcurrency)
+
+	var wg sync.WaitGroup
+	for i, section := range sections {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(i int, section *asana.Section) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			tasks := make([]*asana.Task, 0, 50)
+			sectionOpts := &asana.Options{Limit: defaultPageSize}
+
+			for {
+				batch, nextPage, err := section.Tasks(client, sectionOpts)
+				if err != nil {
+					results[i] = fetchResult{err: fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, err)}
+					return
+				}
+
+				tasks = append(tasks, batch...)
+
+				if nextPage == nil || nextPage.Offset == "" {
+					break
+				}
+
+				sectionOpts.Offset = nextPage.Offset
+			}
+
+			results[i] = fetchResult{tasks: tasks}
+		}(i, section)
+	}
+
+	wg.Wait()
+
 	sectionsWithTasks := make([]sectionTasks, 0, len(sections))
-
 	totalTasks := 0
-	for _, section := range sections {
-		tasks := make([]*asana.Task, 0, 50)
-		options := &asana.Options{Limit: defaultPageSize}
 
-		for {
-			batch, nextPage, err := section.Tasks(client, options)
-			if err != nil {
-				return fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, err)
-			}
+	for i, section := range sections {
+		if results[i].err != nil {
+			return results[i].err
+		}
 
-			tasks = append(tasks, batch...)
+		tasks := results[i].tasks
 
-			if opts.Limit > 0 && totalTasks+len(tasks) >= opts.Limit {
-				remaining := min(opts.Limit-totalTasks, len(tasks))
-				tasks = tasks[:remaining]
-				break
-			}
-
-			if nextPage == nil || nextPage.Offset == "" {
-				break
-			}
-
-			options.Offset = nextPage.Offset
+		if opts.Limit > 0 && totalTasks+len(tasks) >= opts.Limit {
+			remaining := min(opts.Limit-totalTasks, len(tasks))
+			tasks = tasks[:remaining]
 		}
 
 		totalTasks += len(tasks)
