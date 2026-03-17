@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,6 +30,7 @@ type TasksOptions struct {
 	ProjectName  string
 	WithSections bool
 	Limit        int
+	JSON         bool
 }
 
 type sectionTasks struct {
@@ -85,6 +87,7 @@ func NewCmdTasks(f factory.Factory, runF func(*TasksOptions) error) *cobra.Comma
 
 	cmd.Flags().BoolVarP(&opts.WithSections, "sections", "s", false, "Group tasks by sections")
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the total number of tasks returned (0 = no limit)")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 	return cmd
 }
 
@@ -253,7 +256,27 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 	return displayTasksBySection(opts, project, sectionsWithTasks)
 }
 
+type jsonTask struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type jsonSectionTasks struct {
+	Section string     `json:"section"`
+	Tasks   []jsonTask `json:"tasks"`
+}
+
 func displayTasks(opts *TasksOptions, project *asana.Project, tasks []*asana.Task) error {
+	if opts.JSON {
+		out := make([]jsonTask, len(tasks))
+		for i, t := range tasks {
+			out[i] = jsonTask{ID: t.ID, Name: t.Name}
+		}
+		enc := json.NewEncoder(opts.IO.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
 	cs := opts.IO.ColorScheme()
 	out := opts.IO.Out
 
@@ -265,7 +288,7 @@ func displayTasks(opts *TasksOptions, project *asana.Project, tasks []*asana.Tas
 	}
 
 	for i, task := range tasks {
-		fmt.Fprintf(out, "%d. %s\n", i+1, cs.Bold(task.Name))
+		fmt.Fprintf(out, "%d. %s (ID: %s)\n", i+1, cs.Bold(task.Name), task.ID)
 	}
 
 	return nil
@@ -276,6 +299,20 @@ func displayTasksBySection(
 	project *asana.Project,
 	sections []sectionTasks,
 ) error {
+	if opts.JSON {
+		out := make([]jsonSectionTasks, len(sections))
+		for i, st := range sections {
+			tasks := make([]jsonTask, len(st.tasks))
+			for j, t := range st.tasks {
+				tasks[j] = jsonTask{ID: t.ID, Name: t.Name}
+			}
+			out[i] = jsonSectionTasks{Section: st.section.Name, Tasks: tasks}
+		}
+		enc := json.NewEncoder(opts.IO.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
 	cs := opts.IO.ColorScheme()
 	out := opts.IO.Out
 
@@ -294,7 +331,7 @@ func displayTasksBySection(
 		}
 
 		for i, task := range st.tasks {
-			fmt.Fprintf(out, "  %d. %s\n", i+1, task.Name)
+			fmt.Fprintf(out, "  %d. %s (ID: %s)\n", i+1, task.Name, task.ID)
 		}
 		fmt.Fprintln(out)
 	}
