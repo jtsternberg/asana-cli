@@ -1,7 +1,9 @@
 package list
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -91,5 +93,59 @@ func TestRunList_ClientError(t *testing.T) {
 	}
 	if err := runList(opts); err == nil || !strings.Contains(err.Error(), "auth failed") {
 		t.Fatalf("expected client error, got %v", err)
+	}
+}
+
+type transportFunc func(*http.Request) (*http.Response, error)
+
+func (fn transportFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func newTestClient(mock *asana.MockClient) *asana.Client {
+	httpClient := &http.Client{
+		Transport: transportFunc(mock.Do),
+	}
+	return asana.NewClient(httpClient)
+}
+
+func TestRunList_JSONOutput(t *testing.T) {
+	mockProjects := []*asana.Project{
+		{ID: "111", ProjectBase: asana.ProjectBase{Name: "Alpha"}},
+		{ID: "222", ProjectBase: asana.ProjectBase{Name: "Beta"}},
+	}
+	mock, err := asana.NewMockClient(200, mockProjects)
+	if err != nil {
+		t.Fatalf("NewMockClient: %v", err)
+	}
+	client := newTestClient(mock)
+
+	io, _, out, _ := iostreams.Test()
+	opts := &ListOptions{
+		IO: io,
+		Config: func() (*config.Config, error) {
+			return &config.Config{Workspace: &asana.Workspace{ID: "W"}}, nil
+		},
+		Client: func() (*asana.Client, error) { return client, nil },
+		JSON:   true,
+	}
+
+	if err := runList(opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got []map[string]string
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON output: %v\nraw: %s", err, out.String())
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(got))
+	}
+	if got[0]["id"] != "111" || got[0]["name"] != "Alpha" {
+		t.Errorf("project[0] = %v; want id=111 name=Alpha", got[0])
+	}
+	if got[1]["id"] != "222" || got[1]["name"] != "Beta" {
+		t.Errorf("project[1] = %v; want id=222 name=Beta", got[1])
 	}
 }
