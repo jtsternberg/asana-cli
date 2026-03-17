@@ -1,6 +1,8 @@
 ---
 name: troubleshooting-asana
 description: Diagnoses and resolves Asana CLI issues. Use when `asana` commands fail or Asana authentication errors occur.
+allowed-tools: Bash(asana *), Bash(which asana), Bash(security find-generic-password *)
+user-invocable: false
 ---
 
 # Troubleshooting the Asana CLI

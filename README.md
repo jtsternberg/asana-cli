@@ -217,8 +217,8 @@ claude plugins add /path/to/asana-cli
 
 ### What's Included
 
-- **Skills**: `using-asana-cli` (command reference), `troubleshooting-asana` (error diagnosis)
-- **Commands**: `/asana-create-task`, `/asana-update-task`, `/asana-delete-task`
+- **Slash commands**: `/asana-create-task`, `/asana-update-task`, `/asana-delete-task`, `/asana-move-task`
+- **Background skills**: `using-asana-cli` (command reference), `troubleshooting-asana` (error diagnosis)
 - **Agent**: `asana-task-manager` for autonomous task management
 
 The `asana` CLI must be installed and authenticated (`asana auth login`) before using the plugin.

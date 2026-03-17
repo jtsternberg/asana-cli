@@ -1,6 +1,8 @@
 ---
 name: using-asana-cli
 description: Manages Asana tasks, Asana projects, and Asana workspace users via the `asana` CLI. Use when the user explicitly mentions Asana or uses `asana` commands.
+allowed-tools: Bash(asana *)
+user-invocable: false
 ---
 
 # Asana CLI

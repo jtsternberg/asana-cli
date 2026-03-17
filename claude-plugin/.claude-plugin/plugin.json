@@ -6,6 +6,5 @@
   "repository": "https://github.com/jtsternberg/asana-cli",
   "license": "MIT",
   "keywords": ["asana", "tasks", "projects", "project-management"],
-  "skills": "./skills/",
-  "commands": "./commands/"
+  "skills": "./skills/"
 }
