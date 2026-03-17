@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/MakeNowJust/heredoc"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/timwehrle/asana/internal/config"
 	"github.com/timwehrle/asana/internal/prompter"
@@ -217,30 +217,20 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 		options.Offset = nextPage.Offset
 	}
 
-	type fetchResult struct {
-		tasks []*asana.Task
-		err   error
-	}
+	results := make([][]*asana.Task, len(sections))
 
-	results := make([]fetchResult, len(sections))
-	sem := make(chan struct{}, sectionConcurrency)
+	g := new(errgroup.Group)
+	g.SetLimit(sectionConcurrency)
 
-	var wg sync.WaitGroup
 	for i, section := range sections {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func(i int, section *asana.Section) {
-			defer wg.Done()
-			defer func() { <-sem }()
-
+		g.Go(func() error {
 			tasks := make([]*asana.Task, 0, 50)
 			sectionOpts := &asana.Options{Limit: defaultPageSize}
 
 			for {
 				batch, nextPage, err := section.Tasks(client, sectionOpts)
 				if err != nil {
-					results[i] = fetchResult{err: fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, err)}
-					return
+					return fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, err)
 				}
 
 				tasks = append(tasks, batch...)
@@ -252,21 +242,20 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 				sectionOpts.Offset = nextPage.Offset
 			}
 
-			results[i] = fetchResult{tasks: tasks}
-		}(i, section)
+			results[i] = tasks
+			return nil
+		})
 	}
 
-	wg.Wait()
+	if err := g.Wait(); err != nil {
+		return err
+	}
 
 	sectionsWithTasks := make([]sectionTasks, 0, len(sections))
 	totalTasks := 0
 
 	for i, section := range sections {
-		if results[i].err != nil {
-			return results[i].err
-		}
-
-		tasks := results[i].tasks
+		tasks := results[i]
 
 		if opts.Limit > 0 && totalTasks+len(tasks) >= opts.Limit {
 			remaining := min(opts.Limit-totalTasks, len(tasks))
