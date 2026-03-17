@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/MakeNowJust/heredoc"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/timwehrle/asana/internal/config"
 	"github.com/timwehrle/asana/internal/prompter"
@@ -195,6 +198,8 @@ func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Proje
 	return displayTasks(opts, project, tasks)
 }
 
+const sectionConcurrency = 5
+
 func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
 	sections := make([]*asana.Section, 0, 20)
 	options := &asana.Options{Limit: defaultPageSize}
@@ -214,32 +219,76 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 		options.Offset = nextPage.Offset
 	}
 
+	results := make([][]*asana.Task, len(sections))
+	var totalFetched atomic.Int64
+
+	g := new(errgroup.Group)
+	g.SetLimit(sectionConcurrency)
+
+	for i, section := range sections {
+		g.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("panic fetching tasks for section %q: %v", section.Name, r)
+				}
+			}()
+
+			// Skip if earlier goroutines already collected enough tasks
+			if opts.Limit > 0 && totalFetched.Load() >= int64(opts.Limit) {
+				return nil
+			}
+
+			tasks := make([]*asana.Task, 0, 50)
+			sectionOpts := &asana.Options{Limit: defaultPageSize}
+
+			for {
+				var batch []*asana.Task
+				var nextPage *asana.NextPage
+				var fetchErr error
+
+				for attempt := range 3 {
+					batch, nextPage, fetchErr = section.Tasks(client, sectionOpts)
+					if fetchErr == nil || !asana.IsRateLimited(fetchErr) {
+						break
+					}
+					delay := asana.RetryAfter(fetchErr)
+					if delay <= 0 {
+						delay = time.Duration(attempt+1) * 5 * time.Second
+					}
+					time.Sleep(delay)
+				}
+				if fetchErr != nil {
+					return fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, fetchErr)
+				}
+
+				tasks = append(tasks, batch...)
+
+				if nextPage == nil || nextPage.Offset == "" {
+					break
+				}
+
+				sectionOpts.Offset = nextPage.Offset
+			}
+
+			results[i] = tasks
+			totalFetched.Add(int64(len(tasks)))
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
+	}
+
 	sectionsWithTasks := make([]sectionTasks, 0, len(sections))
-
 	totalTasks := 0
-	for _, section := range sections {
-		tasks := make([]*asana.Task, 0, 50)
-		options := &asana.Options{Limit: defaultPageSize}
 
-		for {
-			batch, nextPage, err := section.Tasks(client, options)
-			if err != nil {
-				return fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, err)
-			}
+	for i, section := range sections {
+		tasks := results[i]
 
-			tasks = append(tasks, batch...)
-
-			if opts.Limit > 0 && totalTasks+len(tasks) >= opts.Limit {
-				remaining := min(opts.Limit-totalTasks, len(tasks))
-				tasks = tasks[:remaining]
-				break
-			}
-
-			if nextPage == nil || nextPage.Offset == "" {
-				break
-			}
-
-			options.Offset = nextPage.Offset
+		if opts.Limit > 0 && totalTasks+len(tasks) >= opts.Limit {
+			remaining := min(opts.Limit-totalTasks, len(tasks))
+			tasks = tasks[:remaining]
 		}
 
 		totalTasks += len(tasks)

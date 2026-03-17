@@ -339,3 +339,203 @@ func TestFindProject_NotFound(t *testing.T) {
 		t.Errorf("expected 'not found' error, got: %v", err)
 	}
 }
+
+// --- listTasksWithSections tests ---
+
+// TestListTasksWithSections_OrderPreserved verifies that concurrent fetches preserve section order.
+func TestListTasksWithSections_OrderPreserved(t *testing.T) {
+	// Three sections: S1 (tasks A,B), S2 (tasks C), S3 (tasks D,E)
+	// The mock routes requests by URL path.
+	client := newMockClient(func(req *http.Request) (*http.Response, error) {
+		path := req.URL.Path
+		var body []byte
+		switch {
+		case strings.HasSuffix(path, "/projects/P1/sections"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "S1", "name": "Section 1"},
+				{"gid": "S2", "name": "Section 2"},
+				{"gid": "S3", "name": "Section 3"},
+			}, nil)
+		case strings.HasSuffix(path, "/sections/S1/tasks"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "T1", "name": "Task A"},
+				{"gid": "T2", "name": "Task B"},
+			}, nil)
+		case strings.HasSuffix(path, "/sections/S2/tasks"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "T3", "name": "Task C"},
+			}, nil)
+		case strings.HasSuffix(path, "/sections/S3/tasks"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "T4", "name": "Task D"},
+				{"gid": "T5", "name": "Task E"},
+			}, nil)
+		default:
+			body = jsonResponse([]map[string]string{}, nil)
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(bytes.NewBuffer(body)),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	io, _, outBuf, _ := iostreams.Test()
+	opts := &TasksOptions{IO: io, Limit: 0}
+	project := &asana.Project{ID: "P1", ProjectBase: asana.ProjectBase{Name: "My Project"}}
+
+	if err := listTasksWithSections(opts, client, project); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := outBuf.String()
+
+	// Verify all tasks appear in the output
+	for _, name := range []string{"Task A", "Task B", "Task C", "Task D", "Task E"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("expected %q in output, got:\n%s", name, out)
+		}
+	}
+
+	// Verify section order: Section 1 before Section 2 before Section 3
+	pos1 := strings.Index(out, "Section 1")
+	pos2 := strings.Index(out, "Section 2")
+	pos3 := strings.Index(out, "Section 3")
+	if pos1 < 0 || pos2 < 0 || pos3 < 0 {
+		t.Fatalf("not all sections found in output:\n%s", out)
+	}
+	if !(pos1 < pos2 && pos2 < pos3) {
+		t.Errorf("sections out of order: S1@%d S2@%d S3@%d\noutput:\n%s", pos1, pos2, pos3, out)
+	}
+}
+
+// TestListTasksWithSections_LimitEnforced verifies that the --limit flag is respected.
+func TestListTasksWithSections_LimitEnforced(t *testing.T) {
+	client := newMockClient(func(req *http.Request) (*http.Response, error) {
+		path := req.URL.Path
+		var body []byte
+		switch {
+		case strings.HasSuffix(path, "/projects/P1/sections"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "S1", "name": "Section 1"},
+				{"gid": "S2", "name": "Section 2"},
+			}, nil)
+		case strings.HasSuffix(path, "/sections/S1/tasks"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "T1", "name": "Task A"},
+				{"gid": "T2", "name": "Task B"},
+				{"gid": "T3", "name": "Task C"},
+			}, nil)
+		case strings.HasSuffix(path, "/sections/S2/tasks"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "T4", "name": "Task D"},
+			}, nil)
+		default:
+			body = jsonResponse([]map[string]string{}, nil)
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(bytes.NewBuffer(body)),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	io, _, outBuf, _ := iostreams.Test()
+	opts := &TasksOptions{IO: io, Limit: 2}
+	project := &asana.Project{ID: "P1", ProjectBase: asana.ProjectBase{Name: "My Project"}}
+
+	if err := listTasksWithSections(opts, client, project); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := outBuf.String()
+
+	// Only 2 tasks total should appear
+	if !strings.Contains(out, "Task A") || !strings.Contains(out, "Task B") {
+		t.Errorf("expected Task A and Task B in output, got:\n%s", out)
+	}
+	if strings.Contains(out, "Task C") || strings.Contains(out, "Task D") {
+		t.Errorf("tasks beyond limit should not appear, got:\n%s", out)
+	}
+}
+
+// TestListTasksWithSections_ErrorPropagated verifies that a section fetch error is returned.
+func TestListTasksWithSections_ErrorPropagated(t *testing.T) {
+	client := newMockClient(func(req *http.Request) (*http.Response, error) {
+		path := req.URL.Path
+		var body []byte
+		switch {
+		case strings.HasSuffix(path, "/projects/P1/sections"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "S1", "name": "Broken Section"},
+			}, nil)
+		default:
+			// Return a 500 for the tasks endpoint
+			body = []byte(`{"errors":[{"message":"server error"}]}`)
+			return &http.Response{
+				StatusCode: 500,
+				Body:       io.NopCloser(bytes.NewBuffer(body)),
+				Header:     make(http.Header),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(bytes.NewBuffer(body)),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	io, _, _, _ := iostreams.Test()
+	opts := &TasksOptions{IO: io, Limit: 0}
+	project := &asana.Project{ID: "P1", ProjectBase: asana.ProjectBase{Name: "My Project"}}
+
+	err := listTasksWithSections(opts, client, project)
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+}
+
+// TestListTasksWithSections_JSONOutput verifies JSON output when using sections.
+func TestListTasksWithSections_JSONOutput(t *testing.T) {
+	client := newMockClient(func(req *http.Request) (*http.Response, error) {
+		path := req.URL.Path
+		var body []byte
+		switch {
+		case strings.HasSuffix(path, "/projects/P1/sections"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "S1", "name": "Alpha"},
+			}, nil)
+		case strings.HasSuffix(path, "/sections/S1/tasks"):
+			body = jsonResponse([]map[string]string{
+				{"gid": "99", "name": "JSON Task"},
+			}, nil)
+		default:
+			body = jsonResponse([]map[string]string{}, nil)
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(bytes.NewBuffer(body)),
+			Header:     make(http.Header),
+		}, nil
+	})
+
+	io, _, outBuf, _ := iostreams.Test()
+	opts := &TasksOptions{IO: io, Limit: 0, JSON: true}
+	project := &asana.Project{ID: "P1", ProjectBase: asana.ProjectBase{Name: "My Project"}}
+
+	if err := listTasksWithSections(opts, client, project); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var result []jsonSectionTasks
+	if err := json.Unmarshal(outBuf.Bytes(), &result); err != nil {
+		t.Fatalf("expected valid JSON, got error: %v\noutput: %s", err, outBuf.String())
+	}
+
+	if len(result) != 1 || result[0].Section != "Alpha" {
+		t.Errorf("unexpected JSON result: %+v", result)
+	}
+	if len(result[0].Tasks) != 1 || result[0].Tasks[0].ID != "99" {
+		t.Errorf("unexpected tasks in JSON result: %+v", result[0].Tasks)
+	}
+}
