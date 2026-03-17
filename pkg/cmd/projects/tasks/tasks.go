@@ -15,6 +15,8 @@ import (
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
+const defaultPageSize = 100
+
 type TasksOptions struct {
 	IO       *iostreams.IOStreams
 	Prompter prompter.Prompter
@@ -23,6 +25,7 @@ type TasksOptions struct {
 	Client func() (*asana.Client, error)
 
 	WithSections bool
+	Limit        int
 }
 
 type sectionTasks struct {
@@ -58,6 +61,7 @@ func NewCmdTasks(f factory.Factory, runF func(*TasksOptions) error) *cobra.Comma
 	}
 
 	cmd.Flags().BoolVarP(&opts.WithSections, "sections", "s", false, "Group tasks by sections")
+	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the total number of tasks returned (0 = no limit)")
 	return cmd
 }
 
@@ -114,7 +118,7 @@ func selectProject(
 
 func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
 	tasks := make([]*asana.Task, 0, 50)
-	options := &asana.Options{}
+	options := &asana.Options{Limit: defaultPageSize}
 
 	for {
 		batch, nextPage, err := project.Tasks(client, options)
@@ -123,6 +127,11 @@ func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Proje
 		}
 
 		tasks = append(tasks, batch...)
+
+		if opts.Limit > 0 && len(tasks) >= opts.Limit {
+			tasks = tasks[:opts.Limit]
+			break
+		}
 
 		if nextPage == nil || nextPage.Offset == "" {
 			break
@@ -136,7 +145,7 @@ func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Proje
 
 func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
 	sections := make([]*asana.Section, 0, 20)
-	options := &asana.Options{}
+	options := &asana.Options{Limit: defaultPageSize}
 
 	for {
 		batch, nextPage, err := project.Sections(client, options)
@@ -155,9 +164,10 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 
 	sectionsWithTasks := make([]sectionTasks, 0, len(sections))
 
+	totalTasks := 0
 	for _, section := range sections {
 		tasks := make([]*asana.Task, 0, 50)
-		options := &asana.Options{}
+		options := &asana.Options{Limit: defaultPageSize}
 
 		for {
 			batch, nextPage, err := section.Tasks(client, options)
@@ -167,6 +177,12 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 
 			tasks = append(tasks, batch...)
 
+			if opts.Limit > 0 && totalTasks+len(tasks) >= opts.Limit {
+				remaining := min(opts.Limit-totalTasks, len(tasks))
+				tasks = tasks[:remaining]
+				break
+			}
+
 			if nextPage == nil || nextPage.Offset == "" {
 				break
 			}
@@ -174,10 +190,15 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 			options.Offset = nextPage.Offset
 		}
 
+		totalTasks += len(tasks)
 		sectionsWithTasks = append(sectionsWithTasks, sectionTasks{
 			section: section,
 			tasks:   tasks,
 		})
+
+		if opts.Limit > 0 && totalTasks >= opts.Limit {
+			break
+		}
 	}
 
 	return displayTasksBySection(opts, project, sectionsWithTasks)
