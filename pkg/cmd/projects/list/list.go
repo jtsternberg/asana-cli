@@ -64,8 +64,6 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 }
 
 func runList(opts *ListOptions) error {
-	cs := opts.IO.ColorScheme()
-
 	cfg, err := opts.Config()
 	if err != nil {
 		return err
@@ -113,6 +111,7 @@ func runList(opts *ListOptions) error {
 		return enc.Encode(out)
 	}
 
+	cs := opts.IO.ColorScheme()
 	fmt.Fprintf(opts.IO.Out, "\nProjects in %s:\n\n", cs.Bold(cfg.Workspace.Name))
 	if len(projects) == 0 {
 		fmt.Fprintln(opts.IO.Out, "No projects found")
