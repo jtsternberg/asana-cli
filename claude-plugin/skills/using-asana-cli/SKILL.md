@@ -158,14 +158,20 @@ asana tasks search --is-blocked --due-on-after 2026-03-09 --due-on-before 2026-0
 
 ## Structured Output
 
-All task commands (`list`, `search`, `view`) support `--json` for machine-readable output. Use this for scripting and piping results between commands:
+All task commands (`list`, `search`, `view`) support `--json` for machine-readable output. Pipe the output to `jq` for filtering and transformation:
 
 ```bash
-# Get task IDs from search results
-asana tasks search --query "deploy" --json
+# Get all task IDs from search results
+asana tasks search --query "deploy" --json | jq '.[].id'
 
-# View a specific task as JSON
-asana tasks view <task-id> --json
+# Get task names and IDs
+asana tasks list --json | jq '.[] | {id, name}'
+
+# Filter tasks by name pattern (case-insensitive)
+asana tasks list --json | jq '.[] | select(.name | test("keyword"; "i"))'
+
+# Extract a single field from a specific task
+asana tasks view <task-id> --json | jq '.name'
 ```
 
 Task IDs are also shown in the default text output of `list` and `search` (e.g., `(ID: 1234567890)`).
