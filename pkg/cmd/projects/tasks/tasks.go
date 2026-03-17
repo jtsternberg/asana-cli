@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"github.com/MakeNowJust/heredoc"
 	"golang.org/x/sync/errgroup"
@@ -218,12 +219,18 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 	}
 
 	results := make([][]*asana.Task, len(sections))
+	var totalFetched atomic.Int64
 
 	g := new(errgroup.Group)
 	g.SetLimit(sectionConcurrency)
 
 	for i, section := range sections {
 		g.Go(func() error {
+			// Skip if earlier goroutines already collected enough tasks
+			if opts.Limit > 0 && totalFetched.Load() >= int64(opts.Limit) {
+				return nil
+			}
+
 			tasks := make([]*asana.Task, 0, 50)
 			sectionOpts := &asana.Options{Limit: defaultPageSize}
 
@@ -243,6 +250,7 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 			}
 
 			results[i] = tasks
+			totalFetched.Add(int64(len(tasks)))
 			return nil
 		})
 	}
