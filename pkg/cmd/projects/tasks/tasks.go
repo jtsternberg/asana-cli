@@ -225,7 +225,13 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 	g.SetLimit(sectionConcurrency)
 
 	for i, section := range sections {
-		g.Go(func() error {
+		g.Go(func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("panic fetching tasks for section %q: %v", section.Name, r)
+				}
+			}()
+
 			// Skip if earlier goroutines already collected enough tasks
 			if opts.Limit > 0 && totalFetched.Load() >= int64(opts.Limit) {
 				return nil
