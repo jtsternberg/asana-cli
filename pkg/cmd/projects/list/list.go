@@ -1,6 +1,7 @@
 package list
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/timwehrle/asana/internal/config"
@@ -23,6 +24,7 @@ type ListOptions struct {
 	Limit    int
 	Sort     string
 	Favorite bool
+	JSON     bool
 }
 
 func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command {
@@ -56,6 +58,7 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 	cmd.Flags().
 		StringVarP(&opts.Sort, "sort", "s", "", "Sort projects by name (options: asc, desc)")
 	cmd.Flags().BoolVarP(&opts.Favorite, "favorite", "f", false, "List your favorite projects")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	return cmd
 }
@@ -94,6 +97,20 @@ func runList(opts *ListOptions) error {
 		case "desc":
 			sorting.ProjectSort.ByNameDesc(projects)
 		}
+	}
+
+	if opts.JSON {
+		type jsonProject struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
+		out := make([]jsonProject, len(projects))
+		for i, p := range projects {
+			out[i] = jsonProject{ID: p.ID, Name: p.Name}
+		}
+		enc := json.NewEncoder(opts.IO.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
 	}
 
 	fmt.Fprintf(opts.IO.Out, "\nProjects in %s:\n\n", cs.Bold(cfg.Workspace.Name))
