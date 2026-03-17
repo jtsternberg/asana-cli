@@ -179,6 +179,7 @@ func runSearch(opts *SearchOptions) error {
 
 	options := &asana.Options{
 		Fields: []string{"name", "due_on"},
+		Limit:  opts.Limit,
 	}
 
 	tasks, err := workspace.SearchTasks(client, query, options)
