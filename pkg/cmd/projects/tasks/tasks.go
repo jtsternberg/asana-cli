@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/MakeNowJust/heredoc"
 	"golang.org/x/sync/errgroup"
@@ -241,9 +242,23 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 			sectionOpts := &asana.Options{Limit: defaultPageSize}
 
 			for {
-				batch, nextPage, err := section.Tasks(client, sectionOpts)
-				if err != nil {
-					return fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, err)
+				var batch []*asana.Task
+				var nextPage *asana.NextPage
+				var fetchErr error
+
+				for attempt := range 3 {
+					batch, nextPage, fetchErr = section.Tasks(client, sectionOpts)
+					if fetchErr == nil || !asana.IsRateLimited(fetchErr) {
+						break
+					}
+					delay := asana.RetryAfter(fetchErr)
+					if delay <= 0 {
+						delay = time.Duration(attempt+1) * 5 * time.Second
+					}
+					time.Sleep(delay)
+				}
+				if fetchErr != nil {
+					return fmt.Errorf("failed to fetch tasks for section %q: %w", section.Name, fetchErr)
 				}
 
 				tasks = append(tasks, batch...)
