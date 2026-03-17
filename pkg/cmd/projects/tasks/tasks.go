@@ -52,6 +52,10 @@ func NewCmdTasks(f factory.Factory, runF func(*TasksOptions) error) *cobra.Comma
 					$ asana project tasks --sections
 				`),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.Limit < 0 {
+				return fmt.Errorf("invalid limit: %v", opts.Limit)
+			}
+
 			if runF != nil {
 				return runF(opts)
 			}
