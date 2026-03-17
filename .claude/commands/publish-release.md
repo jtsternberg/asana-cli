@@ -1,7 +1,7 @@
 ---
 description: "Create a new release with changelog, git tag, and GoReleaser"
 argument-hint: "[version] - optional, auto-detected if omitted"
-allowed-tools: Bash(git *), Bash(gh *), Bash(go build *), Bash(go test *), Bash(GITHUB_TOKEN=* goreleaser *), Read, Edit, AskUserQuestion
+allowed-tools: Bash(git *), Bash(gh *), Bash(go build *), Bash(go test *), Bash(GITHUB_TOKEN=* goreleaser *), Bash(asana upgrade *), Read, Edit, AskUserQuestion
 ---
 
 Create a new release. Version can be provided as $ARGUMENTS, or auto-detected from commits.
@@ -61,5 +61,12 @@ Create a new release. Version can be provided as $ARGUMENTS, or auto-detected fr
      gh release create vX.Y.Z --title "vX.Y.Z" --notes "$CHANGELOG_CONTENT"
      ```
 
-9. **Update README** if this is the first release:
-   - Add back installation methods that depend on releases (pre-built binaries, install script)
+9. **Update local binary**:
+   ```bash
+   asana upgrade --yes
+   ```
+   - This pulls the freshly-published GoReleaser binary with the correct version embedded
+   - Verify with the health check output (should show the new version)
+
+10. **Update README** if this is the first release:
+    - Add back installation methods that depend on releases (pre-built binaries, install script)
