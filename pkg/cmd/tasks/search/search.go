@@ -187,7 +187,7 @@ func runSearch(opts *SearchOptions) error {
 		return fmt.Errorf("failed searching tasks: %w", err)
 	}
 
-	if opts.Limit > 0 && len(tasks) > opts.Limit {
+	if opts.Limit > 0 && len(tasks) >= opts.Limit {
 		tasks = tasks[:opts.Limit]
 	}
 
