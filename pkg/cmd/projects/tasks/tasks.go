@@ -3,6 +3,8 @@ package tasks
 import (
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/MakeNowJust/heredoc"
 
 	"github.com/timwehrle/asana/internal/config"
@@ -24,6 +26,7 @@ type TasksOptions struct {
 	Config func() (*config.Config, error)
 	Client func() (*asana.Client, error)
 
+	ProjectName  string
 	WithSections bool
 	Limit        int
 }
@@ -41,17 +44,33 @@ func NewCmdTasks(f factory.Factory, runF func(*TasksOptions) error) *cobra.Comma
 		Client:   f.Client,
 	}
 	cmd := &cobra.Command{
-		Use:   "tasks",
+		Use:   "tasks [project-name]",
 		Short: "List tasks of a project",
-		Long:  "Retrieve and display a list of all tasks under a project.",
-		Example: heredoc.Doc(`
-					# List all tasks of a project
-					$ asana project tasks
+		Long: heredoc.Doc(`
+			Retrieve and display a list of all tasks under a project.
 
-					# List tasks of a project with a specific section
-					$ asana project tasks --sections
-				`),
+			If a project name or ID is provided, it will be used directly.
+			Otherwise, you will be prompted to select a project interactively.
+		`),
+		Args: cobra.MaximumNArgs(1),
+		Example: heredoc.Doc(`
+			# List all tasks of a project by name
+			$ asana projects tasks "Outgoing Tasks"
+
+			# List tasks interactively (prompts for project)
+			$ asana projects tasks
+
+			# List tasks grouped by section
+			$ asana projects tasks "My Project" --sections
+
+			# Limit total tasks returned
+			$ asana projects tasks "My Project" --limit 50
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				opts.ProjectName = args[0]
+			}
+
 			if opts.Limit < 0 {
 				return fmt.Errorf("invalid limit: %v", opts.Limit)
 			}
@@ -107,6 +126,12 @@ func selectProject(
 		return nil, errors.New("no projects found")
 	}
 
+	// If a project name/ID was provided, find it directly
+	if opts.ProjectName != "" {
+		return findProject(projects, opts.ProjectName)
+	}
+
+	// Otherwise, prompt interactively
 	projectNames := make([]string, len(projects))
 	for i, project := range projects {
 		projectNames[i] = project.Name
@@ -118,6 +143,26 @@ func selectProject(
 	}
 
 	return projects[index], nil
+}
+
+func findProject(projects []*asana.Project, name string) (*asana.Project, error) {
+	nameLower := strings.ToLower(name)
+
+	// Exact match on name or ID
+	for _, p := range projects {
+		if strings.ToLower(p.Name) == nameLower || p.ID == name {
+			return p, nil
+		}
+	}
+
+	// Fuzzy match (contains)
+	for _, p := range projects {
+		if strings.Contains(strings.ToLower(p.Name), nameLower) {
+			return p, nil
+		}
+	}
+
+	return nil, fmt.Errorf("project %q not found in workspace", name)
 }
 
 func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
