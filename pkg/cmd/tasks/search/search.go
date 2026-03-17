@@ -135,7 +135,7 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 	cmd.Flags().StringVar(&opts.DueOn, "due-on", "", "Filter to tasks due on a specific date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.DueAtBefore, "due-at-before", "", "Filter to tasks due at or before a specific date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.DueAtAfter, "due-at-after", "", "Filter to tasks due at or after a specific date (YYYY-MM-DD)")
-	cmd.Flags().StringSliceVar(&opts.ProjectsAny, "project", nil, "Comma-separated list of project IDs to filter tasks by (e.g., 1234,5678)")
+	cmd.Flags().StringSliceVarP(&opts.ProjectsAny, "project", "p", nil, "Comma-separated list of project IDs to filter tasks by (e.g., 1234,5678)")
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the number of results")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
