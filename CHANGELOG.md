@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.3.0] - 2026-03-17
+
+### Added
+
+- **Non-interactive `projects tasks`** — accepts an optional positional argument for project name or ID, with exact and fuzzy matching (matching `projects sections` pattern). Falls back to interactive prompter when omitted.
+- **`--json` flag on `projects tasks`** — machine-readable output with task IDs, including section-grouped JSON for `--sections` mode
+- **`--json` flag on `projects list`** — structured output for scripting workflows
+- **`--project`/`-p` filter on `tasks search`** — scope search results to specific project IDs via the Asana `projects.any` API parameter
+- **`--limit` flag on `projects tasks`** — cap total tasks returned across all pages/sections
+- **Task IDs in `projects tasks` output** — shown in both human-readable and JSON modes
+- **Concurrent section-task fetching** — `projects tasks --sections` now fetches up to 5 sections in parallel using `errgroup`, reducing wall-clock time by ~4-5x on projects with many sections
+- **Rate-limit retry with backoff** — concurrent fetches automatically retry on 429 responses (up to 3 attempts) using the `Retry-After` header or exponential backoff
+
+### Fixed
+
+- **Pagination error on large projects** — `projects tasks` and `projects sections` now set proper page-size limits, preventing "result too large" 400 errors from the Asana API
+- **`RetryAfter` header parsing** — fixed inverted nil check in `errors.go` that caused the parsed Retry-After value to never be stored
+- **Negative `--limit` validation** — `projects tasks` now rejects negative limit values, matching `projects list` behavior
+- **Server-side limit in `tasks search`** — `--limit` is now passed to the Asana API to avoid over-fetching
+- **JSON field name in jq examples** — corrected `gid` to `id` in documentation examples
+
+### Changed
+
+- **Limit comparison normalized** — standardized `>=` comparison for limit checks across `tasks search` and `projects tasks`
+
 ## [2.2.0] - 2026-03-16
 
 ### Added
