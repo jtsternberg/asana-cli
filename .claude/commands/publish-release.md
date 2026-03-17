@@ -1,7 +1,7 @@
 ---
 description: "Create a new release with changelog, git tag, and GoReleaser"
 argument-hint: "[version] - optional, auto-detected if omitted"
-allowed-tools: Bash(git *), Bash(gh release *), Bash(go build *), Bash(go test *), Bash(goreleaser *), Read, Edit, AskUserQuestion
+allowed-tools: Bash(git *), Bash(gh *), Bash(go build *), Bash(go test *), Bash(GITHUB_TOKEN=* goreleaser *), Read, Edit, AskUserQuestion
 ---
 
 Create a new release. Version can be provided as $ARGUMENTS, or auto-detected from commits.
@@ -44,15 +44,16 @@ Create a new release. Version can be provided as $ARGUMENTS, or auto-detected fr
    git tag vX.Y.Z
    ```
 
-7. **Push** (ask for confirmation first):
+7. **Push**:
    ```bash
    git push origin main --tags
    ```
 
-8. **Run GoReleaser** (ask for confirmation first):
+8. **Run GoReleaser**:
    - Check if goreleaser is installed: `which goreleaser || brew install goreleaser`
+   - GoReleaser needs a GitHub token. Use `gh auth token` to get one:
    ```bash
-   goreleaser release --clean
+   GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
    ```
    - This builds cross-platform binaries, creates archives, and publishes a GitHub release
    - If goreleaser fails, fall back to manual GitHub release:
