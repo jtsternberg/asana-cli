@@ -1,4 +1,5 @@
 ---
+name: publish-release
 description: "Create a new release with changelog, git tag, and GoReleaser"
 argument-hint: "[version] - optional, auto-detected if omitted"
 allowed-tools: Bash(git *), Bash(gh *), Bash(go build *), Bash(go test *), Bash(GITHUB_TOKEN=* goreleaser *), Bash(asana upgrade *), Read, Edit, AskUserQuestion
