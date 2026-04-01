@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.4.0] - 2026-04-01
+
+### Added
+
+- **`--cc` flag on `tasks create` and `tasks update`** — hidden alias for `--followers`, because agents and humans naturally reach for "CC" when adding collaborators. Now it Just Works instead of failing silently.
+- **Due date keyword echo in task output** — when using `--due today` or `--due tomorrow`, the success output now shows the resolved date with the keyword in parentheses (e.g., `Due: Apr 1, 2026 (today)`), making it easy to verify date resolution.
+- **Translation Layer in agent skills** — new section mapping natural language intent to correct CLI flags (e.g., "CC Chris" → `--followers`, "due today" → `--due today` literal). Prevents agents from hallucinating flags or pre-resolving date keywords.
+- **Post-Mutation Verification guidance in agent skills** — agents are now instructed to read CLI output after create/update operations and verify all expected fields are present. No more claiming success based on vibes.
+
+### Fixed
+
+- **hooks.json uses record instead of array** — corrected the hooks configuration format
+
+### Changed
+
+- **`golang.org/x/sync` promoted to direct dependency** — was indirect, now explicit
+- **publish-release moved from command to skill** — relocated from `.claude/commands/` to `.claude/skills/` for proper slash command discovery
+
 ## [2.3.0] - 2026-03-17
 
 ### Added
