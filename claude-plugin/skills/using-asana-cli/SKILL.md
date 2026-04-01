@@ -211,10 +211,30 @@ asana users list
 
 Name flags support exact, partial, and ID matching (case-insensitive).
 
-## Verification
+## Translation Layer
 
-After creating or updating a task, verify by checking the returned output or running:
+When the user describes an action in natural language, translate it to the correct CLI flags:
 
-```bash
-asana tasks view <task-id>
-```
+| User says | CLI equivalent | Notes |
+|-----------|---------------|-------|
+| "CC Chris on this" / "add Chris to the task" / "loop in Chris" | `--followers "Chris"` or `--cc "Chris"` | `--cc` is a hidden alias for `--followers` |
+| "due today" / "this is due today" | `--due today` | **NEVER** pre-resolve to a date string — pass the literal keyword |
+| "due tomorrow" | `--due tomorrow` | Same rule: pass the keyword, not a computed date |
+| "due next Friday" | `--due 2026-04-03` | CLI only supports `today`, `tomorrow`, or `YYYY-MM-DD` — you must compute this one |
+| "assign to me" / "I'll take this" | `--assignee me` | |
+| "assign to Chris" | `--assignee "Chris"` | Partial name matching works |
+| "mark it done" / "complete this" | `--complete` | Update command only |
+| "move it to Project X" | Use `asana tasks move` | Don't delete and recreate |
+
+**Critical rule:** For `--due today` and `--due tomorrow`, ALWAYS pass the keyword literally. The CLI resolves it using `time.Now()` on the local machine, which is more reliable than the agent computing a date from session context (which may be stale or in a different timezone).
+
+## Post-Mutation Verification
+
+After ANY create, update, or delete operation, you MUST verify the result:
+
+1. **Read the CLI output carefully** — it confirms what was actually set (name, assignee, due date, followers, URL)
+2. **Check for missing fields** — if you requested a due date but the output doesn't show one, the operation failed silently
+3. **Due date keyword confirmation** — when you pass `--due today`, the output shows the resolved date with the keyword in parentheses, e.g. `Due: Apr 1, 2026 (today)`. Verify this matches your intent.
+4. **Never claim success based on vibes** — if the output doesn't confirm a field was set, it wasn't. Check the receipts.
+
+If something looks wrong, run `asana tasks view <task-id>` to get the full task state.

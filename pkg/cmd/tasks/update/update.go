@@ -103,6 +103,10 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 	cmd.Flags().BoolVar(&opts.Complete, "complete", false, "Mark task as completed")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
 
+	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
+	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
+	cmd.Flags().Lookup("cc").Hidden = true
+
 	return cmd
 }
 
@@ -198,6 +202,13 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	}
 
 	opts.IO.Printf("%s Updated task %s (%s)\n", cs.SuccessIcon, cs.Bold(task.Name), strings.Join(changes, ", "))
+	if opts.Due != "" && req.TaskBase.DueOn != nil {
+		dueStr := format.Date(req.TaskBase.DueOn)
+		if keyword := dueDateKeyword(opts.Due); keyword != "" {
+			dueStr = fmt.Sprintf("%s (%s)", dueStr, keyword)
+		}
+		opts.IO.Printf("  %s %s\n", cs.Gray("Due:"), dueStr)
+	}
 	if task.PermalinkURL != "" {
 		opts.IO.Printf("  %s %s\n", cs.Gray("URL:"), task.PermalinkURL)
 	}
@@ -417,6 +428,14 @@ func setTaskDueDate(
 
 	fmt.Fprintf(opts.IO.Out, "%s Due date updated\n", cs.SuccessIcon)
 	return nil
+}
+
+func dueDateKeyword(input string) string {
+	switch strings.ToLower(input) {
+	case "today", "tomorrow":
+		return strings.ToLower(input)
+	}
+	return ""
 }
 
 func parseDueDate(input string) (*asana.Date, error) {

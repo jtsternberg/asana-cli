@@ -30,10 +30,23 @@ asana tasks create \
   -f "Follower1,Follower2"
 ```
 
-6. Report the created task URL back to the user
+6. **Verify the output** — confirm the success message includes all expected fields (name, assignee, due date, followers, URL). If a field is missing, investigate.
+
+## Date handling
+
+- For "due today" → use `--due today` (NEVER pre-resolve to a date string)
+- For "due tomorrow" → use `--due tomorrow`
+- For other relative dates → compute `YYYY-MM-DD` yourself
+- The output shows resolved dates with keywords: `Due: Apr 1, 2026 (today)`
+
+## Followers / CC
+
+- "CC someone" / "loop in someone" / "add to task" → use `--followers` or `--cc`
+- `--cc` is a hidden alias for `--followers` — both work
 
 ## Guard rails
 
 - If creation fails, check `asana auth status` first
 - If a name doesn't match, use list commands to discover the correct value
 - If section is not found, run `asana projects sections "Project"` and suggest alternatives
+- After creation, read the output carefully — don't claim success unless the output confirms it

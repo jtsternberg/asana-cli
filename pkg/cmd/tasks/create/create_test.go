@@ -69,6 +69,49 @@ func TestRunCreate_ConfigError(t *testing.T) {
 	}
 }
 
+func TestNewCmdCreate_CCAlias(t *testing.T) {
+	f, _, _ := factory.NewTestFactory()
+
+	var sawOpts *CreateOptions
+	cmd := NewCmdCreate(f, func(opts *CreateOptions) error {
+		sawOpts = opts
+		return nil
+	})
+
+	cmd.SetArgs([]string{
+		"--name", "My Task",
+		"--assignee", "me",
+		"--cc", "Chris Christoff,Tom McFarlin",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if sawOpts == nil {
+		t.Fatal("runF was never called")
+	}
+
+	if len(sawOpts.Followers) != 2 {
+		t.Fatalf("Followers = %v; want 2 entries", sawOpts.Followers)
+	}
+	if sawOpts.Followers[0] != "Chris Christoff" {
+		t.Errorf("Followers[0] = %q; want %q", sawOpts.Followers[0], "Chris Christoff")
+	}
+}
+
+func TestDueDateKeyword(t *testing.T) {
+	if got := dueDateKeyword("today"); got != "today" {
+		t.Errorf("dueDateKeyword(\"today\") = %q; want \"today\"", got)
+	}
+	if got := dueDateKeyword("Tomorrow"); got != "tomorrow" {
+		t.Errorf("dueDateKeyword(\"Tomorrow\") = %q; want \"tomorrow\"", got)
+	}
+	if got := dueDateKeyword("2026-04-01"); got != "" {
+		t.Errorf("dueDateKeyword(\"2026-04-01\") = %q; want empty", got)
+	}
+}
+
 func TestGetOrPromptDueDate(t *testing.T) {
 	now := time.Now()
 

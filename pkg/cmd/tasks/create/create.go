@@ -70,6 +70,10 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
 
+	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
+	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
+	cmd.Flags().Lookup("cc").Hidden = true
+
 	return cmd
 }
 
@@ -175,7 +179,11 @@ func runCreate(opts *CreateOptions) error {
 		opts.IO.Printf("  %s %s\n", cs.Gray("Followers:"), strings.Join(followerNames, ", "))
 	}
 	if task.DueOn != nil {
-		opts.IO.Printf("  %s %s\n", cs.Gray("Due:"), format.Date(task.DueOn))
+		dueStr := format.Date(task.DueOn)
+		if keyword := dueDateKeyword(opts.Due); keyword != "" {
+			dueStr = fmt.Sprintf("%s (%s)", dueStr, keyword)
+		}
+		opts.IO.Printf("  %s %s\n", cs.Gray("Due:"), dueStr)
 	}
 	if task.PermalinkURL != "" {
 		opts.IO.Printf("  %s %s\n", cs.Gray("URL:"), task.PermalinkURL)
@@ -262,6 +270,15 @@ func getOrPromptDueDate(opts *CreateOptions) (*asana.Date, error) {
 		return nil, nil
 	}
 	return promptDueDate(opts)
+}
+
+// dueDateKeyword returns the keyword if the input was a relative date keyword, empty otherwise.
+func dueDateKeyword(input string) string {
+	switch strings.ToLower(input) {
+	case "today", "tomorrow":
+		return strings.ToLower(input)
+	}
+	return ""
 }
 
 func parseDueDate(input string) (*asana.Date, error) {

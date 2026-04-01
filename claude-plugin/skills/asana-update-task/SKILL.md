@@ -27,9 +27,20 @@ asana tasks update <task-id> \
   [--complete]
 ```
 
-4. Report the result to the user
+4. **Verify the output** — confirm the success message includes all expected changes. If a field is missing, investigate.
+
+## Date handling
+
+- For "due today" → use `--due today` (NEVER pre-resolve to a date string)
+- For "due tomorrow" → use `--due tomorrow`
+- The output shows resolved dates with keywords: `Due: Apr 1, 2026 (today)`
+
+## Followers / CC
+
+- "CC someone" / "add someone to the task" → use `--followers` or `--cc`
 
 ## Guard rails
 
 - If task not found, ask the user to verify the ID
 - If user/assignee not found, run `asana users list` and suggest the closest match
+- After updating, read the output carefully — don't claim success unless the output confirms it
