@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.5.0] - 2026-04-02
+
+### Added
+
+- **`--search`/`-q` flag on `projects list`** — searches projects by name using the Asana typeahead API, bypassing the 100-project pagination ceiling entirely. `asana projects list -q "outgoing"` finds it instantly.
+- **`--json` flag on `users list`** — structured output with user IDs and names for programmatic use
+- **Name resolution on `tasks search --assignee` and `--creator`** — pass names instead of IDs. `asana tasks search --assignee "Tom McFarlin"` now works (previously required a numeric user ID).
+- **Typeahead API support** — new `Workspace.Typeahead()` and `Workspace.SearchProjects()` methods in the API client
+
+### Changed
+
+- **TDD rule added to CLAUDE.md** — tests first, code second
+
 ## [2.4.0] - 2026-04-01
 
 ### Added
