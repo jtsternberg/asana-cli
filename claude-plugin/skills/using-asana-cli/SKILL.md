@@ -139,8 +139,8 @@ asana tasks search --is-blocked --due-on-after 2026-03-09 --due-on-before 2026-0
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--query` | `-q` | Full-text search on task names and descriptions |
-| `--assignee` | `-a` | Comma-separated assignee IDs or `me`. Omit to search all |
-| `--creator` | | Comma-separated creator IDs or `me` |
+| `--assignee` | `-a` | Comma-separated assignee names, IDs, or `me`. Omit to search all |
+| `--creator` | | Comma-separated creator names, IDs, or `me` |
 | `--limit` | `-l` | Limit number of results |
 | `--sort-by` | | Sort by: `due_date`, `created_at`, `completed_at`, `likes`, `modified_at` (default: `modified_at`) |
 | `--sort-asc` | | Sort ascending (default is descending) |
@@ -181,10 +181,14 @@ Task IDs are also shown in the default text output of `list` and `search` (e.g.,
 ### List projects
 
 ```bash
-asana projects list -l 20        # Limit to 20
-asana projects list -f           # Favorites only
-asana projects list -s asc       # Sort ascending
+asana projects list -l 20              # Limit to 20
+asana projects list -f                 # Favorites only
+asana projects list -s asc             # Sort ascending
+asana projects list -q "outgoing"      # Search by name (uses Asana typeahead API)
+asana projects list -q "outgoing" --json  # Search with JSON output
 ```
+
+**Important:** The workspace may have hundreds of projects. Without `--search`/`-q`, only the first 100 are returned. Always use `--search` when looking for a specific project by name.
 
 ### List sections in a project
 
@@ -204,7 +208,10 @@ asana projects tasks --sections  # Group by section
 ### List workspace users
 
 ```bash
-asana users list
+asana users list                    # Human-readable
+asana users list --with-id          # Show user IDs
+asana users list --json             # JSON output with IDs
+asana users list --json | jq '.[] | select(.name | test("Tom"; "i"))'  # Find a user
 ```
 
 ## Name Matching
@@ -222,7 +229,9 @@ When the user describes an action in natural language, translate it to the corre
 | "due tomorrow" | `--due tomorrow` | Same rule: pass the keyword, not a computed date |
 | "due next Friday" | `--due 2026-04-03` | CLI only supports `today`, `tomorrow`, or `YYYY-MM-DD` — you must compute this one |
 | "assign to me" / "I'll take this" | `--assignee me` | |
-| "assign to Chris" | `--assignee "Chris"` | Partial name matching works |
+| "assign to Chris" | `--assignee "Chris"` | Name matching works on create, update, AND search |
+| "find Tom's tasks" / "search Tom's stuff" | `--assignee "Tom"` | Search resolves names to IDs automatically |
+| "find the outgoing project" / "which project is X in?" | `asana projects list -q "outgoing"` | Uses typeahead API — no 100-project ceiling |
 | "mark it done" / "complete this" | `--complete` | Update command only |
 | "move it to Project X" | Use `asana tasks move` | Don't delete and recreate |
 

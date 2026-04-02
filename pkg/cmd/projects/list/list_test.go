@@ -109,6 +109,50 @@ func newTestClient(mock *asana.MockClient) *asana.Client {
 	return asana.NewClient(httpClient)
 }
 
+func TestNewCmdList_SearchFlag(t *testing.T) {
+	f, _, _ := factory.NewTestFactory()
+
+	var sawOpts *ListOptions
+	cmd := NewCmdList(f, func(opts *ListOptions) error {
+		sawOpts = opts
+		return nil
+	})
+
+	cmd.SetArgs([]string{"--search", "outgoing"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if sawOpts == nil {
+		t.Fatal("runF was never called")
+	}
+	if sawOpts.Search != "outgoing" {
+		t.Errorf("Search = %q; want %q", sawOpts.Search, "outgoing")
+	}
+}
+
+func TestNewCmdList_SearchShortFlag(t *testing.T) {
+	f, _, _ := factory.NewTestFactory()
+
+	var sawOpts *ListOptions
+	cmd := NewCmdList(f, func(opts *ListOptions) error {
+		sawOpts = opts
+		return nil
+	})
+
+	cmd.SetArgs([]string{"-q", "tasks"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+
+	if sawOpts == nil {
+		t.Fatal("runF was never called")
+	}
+	if sawOpts.Search != "tasks" {
+		t.Errorf("Search = %q; want %q", sawOpts.Search, "tasks")
+	}
+}
+
 func TestRunList_JSONOutput(t *testing.T) {
 	mockProjects := []*asana.Project{
 		{ID: "111", ProjectBase: asana.ProjectBase{Name: "Alpha"}},

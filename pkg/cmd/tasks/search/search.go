@@ -158,6 +158,24 @@ func runSearch(opts *SearchOptions) error {
 
 	workspace := cfg.Workspace
 
+	// Resolve assignee names to IDs (the API only accepts IDs)
+	if len(opts.Assignee) > 0 {
+		resolved, err := resolveUserRefs(opts.Assignee, workspace.ID, client)
+		if err != nil {
+			return err
+		}
+		opts.Assignee = resolved
+	}
+
+	// Resolve creator names to IDs
+	if len(opts.CreatorAny) > 0 {
+		resolved, err := resolveUserRefs(opts.CreatorAny, workspace.ID, client)
+		if err != nil {
+			return err
+		}
+		opts.CreatorAny = resolved
+	}
+
 	query := &asana.SearchTasksQuery{
 		Text:            opts.Query,
 		SortBy:          opts.SortBy,
@@ -232,4 +250,80 @@ func runSearch(opts *SearchOptions) error {
 	}
 
 	return nil
+}
+
+// resolveUserRefs resolves a mix of user IDs, "me", and names to IDs.
+// Passes through values that look like IDs or "me", resolves names via workspace users.
+func resolveUserRefs(refs []string, workspaceID string, client *asana.Client) ([]string, error) {
+	var needsResolution []string
+	resolved := make([]string, len(refs))
+
+	for i, ref := range refs {
+		ref = strings.TrimSpace(ref)
+		if ref == "me" || isNumericID(ref) {
+			resolved[i] = ref
+		} else {
+			needsResolution = append(needsResolution, ref)
+			resolved[i] = "" // placeholder
+		}
+	}
+
+	if len(needsResolution) == 0 {
+		return resolved, nil
+	}
+
+	// Fetch workspace users for name matching
+	ws := &asana.Workspace{ID: workspaceID}
+	users, _, err := ws.Users(client, &asana.Options{})
+	if err != nil {
+		return nil, fmt.Errorf("cannot fetch users for name resolution: %w", err)
+	}
+
+	nameToID := make(map[string]string)
+	for _, ref := range needsResolution {
+		refLower := strings.ToLower(ref)
+		found := false
+
+		// Exact match
+		for _, u := range users {
+			if strings.ToLower(u.Name) == refLower {
+				nameToID[ref] = u.ID
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+
+		// Partial match
+		for _, u := range users {
+			if strings.Contains(strings.ToLower(u.Name), refLower) {
+				nameToID[ref] = u.ID
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("user %q not found in workspace", ref)
+		}
+	}
+
+	// Fill in resolved IDs
+	for i, ref := range refs {
+		if resolved[i] == "" {
+			resolved[i] = nameToID[ref]
+		}
+	}
+
+	return resolved, nil
+}
+
+func isNumericID(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
 }

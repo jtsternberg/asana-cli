@@ -23,6 +23,7 @@ type ListOptions struct {
 
 	Limit    int
 	Sort     string
+	Search   string
 	Favorite bool
 	JSON     bool
 }
@@ -57,6 +58,7 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Max number of projects to display")
 	cmd.Flags().
 		StringVarP(&opts.Sort, "sort", "s", "", "Sort projects by name (options: asc, desc)")
+	cmd.Flags().StringVarP(&opts.Search, "search", "q", "", "Search projects by name")
 	cmd.Flags().BoolVarP(&opts.Favorite, "favorite", "f", false, "List your favorite projects")
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
@@ -79,7 +81,9 @@ func runList(opts *ListOptions) error {
 		ID: cfg.Workspace.ID,
 	}
 
-	if opts.Favorite {
+	if opts.Search != "" {
+		projects, err = workspace.SearchProjects(client, opts.Search, opts.Limit)
+	} else if opts.Favorite {
 		projects, err = fetchFavoriteProjects(client, workspace, opts.Limit)
 	} else {
 		projects, err = shared.FetchAllProjects(client, workspace, opts.Limit)

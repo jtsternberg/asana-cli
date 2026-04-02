@@ -203,6 +203,40 @@ func (p *Project) Update(client *Client, request *UpdateProjectRequest, opts ...
 	return err
 }
 
+// TypeaheadQuery is the query for the workspace typeahead endpoint.
+type TypeaheadQuery struct {
+	ResourceType string `url:"resource_type"`
+	Query        string `url:"query,omitempty"`
+	Count        int    `url:"count,omitempty"`
+}
+
+// Typeahead searches for resources by name in this workspace using the
+// /workspaces/{id}/typeahead endpoint. Returns up to `count` results
+// (default 20, max 100).
+func (w *Workspace) Typeahead(client *Client, query *TypeaheadQuery, options ...*Options) ([]*Project, error) {
+	client.trace("Typeahead search in %q for %q (%s)", w.Name, query.Query, query.ResourceType)
+
+	var result []*Project
+	_, err := client.get(
+		fmt.Sprintf("/workspaces/%s/typeahead", w.ID),
+		query,
+		&result,
+		options...)
+	return result, err
+}
+
+// SearchProjects searches for projects by name in this workspace using the typeahead API.
+func (w *Workspace) SearchProjects(client *Client, search string, count int, options ...*Options) ([]*Project, error) {
+	if count <= 0 {
+		count = 100
+	}
+	return w.Typeahead(client, &TypeaheadQuery{
+		ResourceType: "project",
+		Query:        search,
+		Count:        count,
+	}, options...)
+}
+
 // Projects returns a list of projects in this workspace
 func (w *Workspace) Projects(client *Client, options ...*Options) ([]*Project, *NextPage, error) {
 	client.trace("Listing projects in %q", w.Name)

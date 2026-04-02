@@ -1,6 +1,7 @@
 package list
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -22,6 +23,7 @@ type ListOptions struct {
 	Limit  int
 	Sort   string
 	WithID bool
+	JSON   bool
 }
 
 func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command {
@@ -58,6 +60,7 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Limit the number of users to display")
 	cmd.Flags().StringVarP(&opts.Sort, "sort", "s", "", "Sort users by name (asc, desc)")
 	cmd.Flags().BoolVar(&opts.WithID, "with-id", false, "Show users with their user IDs")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	return cmd
 }
@@ -80,6 +83,10 @@ func runList(opts *ListOptions) error {
 
 	if err := sortUsers(users, opts.Sort); err != nil {
 		return err
+	}
+
+	if opts.JSON {
+		return printUsersJSON(opts.IO, users)
 	}
 
 	return printUsers(opts.IO, cfg.Workspace.Name, users, opts.WithID)
@@ -141,6 +148,20 @@ func fetchUsers(client *asana.Client, workspaceID string, limit int) ([]*asana.U
 	}
 
 	return users, nil
+}
+
+func printUsersJSON(io *iostreams.IOStreams, users []*asana.User) error {
+	type jsonUser struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	out := make([]jsonUser, len(users))
+	for i, u := range users {
+		out[i] = jsonUser{ID: u.ID, Name: u.Name}
+	}
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
 
 func printUsers(io *iostreams.IOStreams, workspaceName string, users []*asana.User, showID bool) error {

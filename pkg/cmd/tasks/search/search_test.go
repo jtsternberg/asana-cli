@@ -6,6 +6,46 @@ import (
 	"github.com/timwehrle/asana/pkg/factory"
 )
 
+func TestIsNumericID(t *testing.T) {
+	tests := []struct {
+		input string
+		want  bool
+	}{
+		{"1234567890", true},
+		{"0", true},
+		{"me", false},
+		{"Tom McFarlin", false},
+		{"123abc", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		if got := isNumericID(tt.input); got != tt.want {
+			t.Errorf("isNumericID(%q) = %v; want %v", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestResolveUserRefs_PassthroughIDsAndMe(t *testing.T) {
+	// IDs and "me" should pass through without any API call
+	refs := []string{"me", "1234567890", "9999"}
+	resolved, err := resolveUserRefs(refs, "workspace-id", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resolved) != 3 {
+		t.Fatalf("resolved length = %d; want 3", len(resolved))
+	}
+	if resolved[0] != "me" {
+		t.Errorf("resolved[0] = %q; want %q", resolved[0], "me")
+	}
+	if resolved[1] != "1234567890" {
+		t.Errorf("resolved[1] = %q; want %q", resolved[1], "1234567890")
+	}
+	if resolved[2] != "9999" {
+		t.Errorf("resolved[2] = %q; want %q", resolved[2], "9999")
+	}
+}
+
 func TestNewCmdSearch_ProjectFlag(t *testing.T) {
 	f, _, _ := factory.NewTestFactory()
 
