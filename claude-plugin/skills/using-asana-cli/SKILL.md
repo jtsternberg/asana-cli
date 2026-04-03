@@ -13,13 +13,15 @@ This skill only applies when the user is working with Asana specifically.
 
 ## Operation-specific workflows
 
-Before performing an operation, read the relevant reference file for step-by-step instructions:
+**You MUST read the corresponding reference file(s) before performing any operation.** These contain the exact steps, guard rails, and gotchas for each action. Do not skip this step.
 
-- **Creating a task?** → Read `references/CREATE_TASK.md`
-- **Updating a task?** → Read `references/UPDATE_TASK.md`
-- **Moving a task?** → Read `references/MOVE_TASK.md`
-- **Deleting a task?** → Read `references/DELETE_TASK.md`
-- **Something broken?** → Read `references/TROUBLESHOOTING.md`
+| Operation | Reference | Read it BEFORE you... |
+|-----------|-----------|----------------------|
+| Create | `references/CREATE_TASK.md` | ...run `asana tasks create` |
+| Update | `references/UPDATE_TASK.md` | ...run `asana tasks update` |
+| Move | `references/MOVE_TASK.md` | ...run `asana tasks move` |
+| Delete | `references/DELETE_TASK.md` | ...run `asana tasks delete` |
+| Troubleshoot | `references/TROUBLESHOOTING.md` | ...tell the user something is broken |
 
 ## Prerequisites
 
