@@ -1,15 +1,4 @@
----
-name: asana-create-task
-description: Create a new Asana task with full metadata (name, assignee, project, section, due date, followers)
-argument-hint: [task description in natural language]
-allowed-tools: Bash(asana *)
----
-
-Create a new Asana task based on: $ARGUMENTS
-
-## Auth check
-
-- Auth status: !`asana auth status 2>&1 | head -1`
+# Creating a Task
 
 ## Steps
 
@@ -32,18 +21,6 @@ asana tasks create \
 ```
 
 6. **Verify the output** — confirm the success message includes all expected fields (name, assignee, due date, followers, URL). If a field is missing, investigate.
-
-## Date handling
-
-- For "due today" → use `--due today` (NEVER pre-resolve to a date string)
-- For "due tomorrow" → use `--due tomorrow`
-- For other relative dates → compute `YYYY-MM-DD` yourself
-- The output shows resolved dates with keywords: `Due: Apr 1, 2026 (today)`
-
-## Followers / CC
-
-- "CC someone" / "loop in someone" / "add to task" → use `--followers` or `--cc`
-- `--cc` is a hidden alias for `--followers` — both work
 
 ## Guard rails
 

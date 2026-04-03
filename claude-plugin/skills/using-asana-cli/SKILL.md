@@ -1,8 +1,8 @@
 ---
-name: using-asana-cli
-description: Manages Asana tasks, Asana projects, and Asana workspace users via the `asana` CLI. Use when the user explicitly mentions Asana or uses `asana` commands.
-allowed-tools: Bash(asana *)
-user-invocable: false
+name: asana-task-manager
+description: Manages Asana tasks, Asana projects, and Asana workspace users via the `asana` CLI. Use when the user mentions Asana, asks to create/update/move/delete tasks, search projects, or manage workspace users.
+argument-hint: [create|update|move|delete|search|list] [natural language description]
+allowed-tools: Bash(asana *), Bash(which asana), Bash(security find-generic-password *)
 ---
 
 # Asana CLI
@@ -10,6 +10,16 @@ user-invocable: false
 Manage Asana tasks, Asana projects, and Asana workspace members from the command line using the `asana` CLI. All commands support non-interactive mode for scripting and agent use.
 
 This skill only applies when the user is working with Asana specifically.
+
+## Operation-specific workflows
+
+Before performing an operation, read the relevant reference file for step-by-step instructions:
+
+- **Creating a task?** → Read `references/CREATE_TASK.md`
+- **Updating a task?** → Read `references/UPDATE_TASK.md`
+- **Moving a task?** → Read `references/MOVE_TASK.md`
+- **Deleting a task?** → Read `references/DELETE_TASK.md`
+- **Something broken?** → Read `references/TROUBLESHOOTING.md`
 
 ## Prerequisites
 
