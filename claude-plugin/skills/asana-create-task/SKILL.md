@@ -14,7 +14,8 @@ Create a new Asana task based on: $ARGUMENTS
 ## Steps
 
 1. Parse the request for: task name, assignee, project, section, due date, description, and followers
-2. If project is unknown, discover options: `asana projects list -l 20`
+2. If project is named, search for it: `asana projects list -q "Project Name"`
+   - Only fall back to `asana projects list -l 20` if no name was given and you need to show options
 3. If section is unknown, discover options: `asana projects sections "Project Name"`
 4. If assignee is unclear, discover options: `asana users list`
 5. Create the task with all available flags:

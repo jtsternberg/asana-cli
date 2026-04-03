@@ -15,7 +15,8 @@ Move an Asana task based on: $ARGUMENTS
 
 1. Extract the task ID from $0 (if a URL, parse the numeric ID from it)
 2. Parse the destination from remaining arguments: project name, section name
-3. If project is unknown, discover options: `asana projects list -l 20`
+3. If project is named, search for it: `asana projects list -q "Project Name"`
+   - Only fall back to `asana projects list -l 20` if no name was given
 4. If section is unknown, discover options: `asana projects sections "Project Name"`
 5. Run the move:
 
