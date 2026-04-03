@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.0.0] - 2026-04-03
+
+### BREAKING
+
+- **Consolidated 6 Asana skills into 1** — `asana-create-task`, `asana-update-task`, `asana-move-task`, `asana-delete-task`, and `troubleshooting-asana` are removed. All functionality is now in `asana-task-manager` (formerly `using-asana-cli`) with operation-specific reference files. Agents referencing the old skill names will need to update.
+
+### Changed
+
+- **Operation-specific workflows moved to reference files** — `references/CREATE_TASK.md`, `UPDATE_TASK.md`, `MOVE_TASK.md`, `DELETE_TASK.md`, `TROUBLESHOOTING.md` contain step-by-step instructions. The main skill routes to the right reference based on the operation.
+- **Reference file reading is mandatory** — the skill now uses imperative language requiring agents to read the relevant reference before performing any operation
+
+### Fixed
+
+- **Task skills now use `--search`/`-q` for project discovery** — previously used `asana projects list -l 20` which missed projects beyond the first 20
+
 ## [2.5.0] - 2026-04-02
 
 ### Added

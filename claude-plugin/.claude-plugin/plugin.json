@@ -1,7 +1,7 @@
 {
   "name": "asana-cli",
   "description": "Manage Asana tasks, projects, and users via the asana CLI",
-  "version": "2.5.0",
+  "version": "3.0.0",
   "author": { "name": "jtsternberg", "url": "https://github.com/jtsternberg" },
   "repository": "https://github.com/jtsternberg/asana-cli",
   "license": "MIT",
