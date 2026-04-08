@@ -1,6 +1,7 @@
 package list
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/timwehrle/asana/internal/api/asana"
@@ -20,6 +21,8 @@ type ListOptions struct {
 
 	Config func() (*config.Config, error)
 	Client func() (*asana.Client, error)
+
+	JSON bool
 }
 
 func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command {
@@ -51,18 +54,13 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 		},
 	}
 
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
+
 	return cmd
 }
 
 func runList(opts *ListOptions) error {
-	cs := opts.IO.ColorScheme()
-
 	client, err := opts.Client()
-	if err != nil {
-		return err
-	}
-
-	cfg, err := opts.Config()
 	if err != nil {
 		return err
 	}
@@ -72,14 +70,64 @@ func runList(opts *ListOptions) error {
 		return err
 	}
 
+	return displayWorkspaces(opts, workspaces)
+}
+
+func displayWorkspaces(opts *ListOptions, workspaces []*asana.Workspace) error {
 	if len(workspaces) == 0 {
+		cfg, err := opts.Config()
+		if err != nil {
+			return err
+		}
+		cs := opts.IO.ColorScheme()
 		fmt.Fprintf(opts.IO.Out, "No workspaces found for %s", cs.Bold(cfg.Username))
 		return nil
 	}
 
+	if opts.JSON {
+		return displayWorkspacesJSON(opts.IO, workspaces)
+	}
+	return displayWorkspacesText(opts, workspaces)
+}
+
+func displayWorkspacesJSON(io *iostreams.IOStreams, workspaces []*asana.Workspace) error {
+	type jsonWorkspace struct {
+		ID             string   `json:"id"`
+		Name           string   `json:"name"`
+		IsOrganization bool     `json:"is_organization"`
+		EmailDomains   []string `json:"email_domains,omitempty"`
+	}
+
+	out := make([]jsonWorkspace, len(workspaces))
+	for i, ws := range workspaces {
+		out[i] = jsonWorkspace{
+			ID:             ws.ID,
+			Name:           ws.Name,
+			IsOrganization: ws.IsOrganization,
+			EmailDomains:   ws.EmailDomains,
+		}
+	}
+
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
+func displayWorkspacesText(opts *ListOptions, workspaces []*asana.Workspace) error {
+	cs := opts.IO.ColorScheme()
+
+	cfg, err := opts.Config()
+	if err != nil {
+		return err
+	}
+
 	fmt.Fprintf(opts.IO.Out, "\nWorkspaces of %s:\n\n", cs.Bold(cfg.Username))
 	for i, ws := range workspaces {
-		fmt.Fprintf(opts.IO.Out, "%d. %s\n", i+1, cs.Bold(ws.Name))
+		wsType := "Workspace"
+		if ws.IsOrganization {
+			wsType = "Organization"
+		}
+		fmt.Fprintf(opts.IO.Out, "%d. %s | %s | %s\n", i+1, cs.Bold(ws.Name), wsType, ws.ID)
 	}
 
 	return nil
