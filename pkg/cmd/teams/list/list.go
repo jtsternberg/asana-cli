@@ -1,6 +1,7 @@
 package list
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/MakeNowJust/heredoc"
@@ -15,6 +16,7 @@ type ListOptions struct {
 	IO     *iostreams.IOStreams
 	Config func() (*config.Config, error)
 	Client func() (*asana.Client, error)
+	JSON   bool
 }
 
 func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command {
@@ -40,6 +42,8 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 		},
 	}
 
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
+
 	return cmd
 }
 
@@ -59,12 +63,65 @@ func listRun(opts *ListOptions) error {
 		return fmt.Errorf("failed to fetch teams: %w", err)
 	}
 
-	cs := opts.IO.ColorScheme()
-	opts.IO.Printf("\nTeams in workspace %s:\n\n", cs.Bold(cfg.Workspace.Name))
-
-	for i, team := range teams {
-		opts.IO.Printf("%2d. %s\n", i+1, cs.Bold(team.Name))
+	if opts.JSON {
+		return displayJSON(teams, opts.IO)
 	}
 
+	displayText(teams, opts.IO, cfg.Workspace.Name)
 	return nil
+}
+
+func displayJSON(teams []*asana.Team, io *iostreams.IOStreams) error {
+	type jsonRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+	}
+	type jsonTeam struct {
+		ID           string   `json:"id"`
+		Name         string   `json:"name"`
+		Description  string   `json:"description"`
+		Organization *jsonRef `json:"organization"`
+	}
+
+	out := make([]jsonTeam, 0, len(teams))
+	for _, team := range teams {
+		jt := jsonTeam{
+			ID:          team.ID,
+			Name:        team.Name,
+			Description: team.Description,
+		}
+		if team.Organization != nil {
+			jt.Organization = &jsonRef{
+				ID:   team.Organization.ID,
+				Name: team.Organization.Name,
+			}
+		}
+		out = append(out, jt)
+	}
+
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
+func displayText(teams []*asana.Team, io *iostreams.IOStreams, workspaceName string) {
+	cs := io.ColorScheme()
+	io.Printf("\nTeams in workspace %s:\n\n", cs.Bold(workspaceName))
+
+	for i, team := range teams {
+		desc := truncate(team.Description, 50)
+		if desc != "" {
+			io.Printf("%2d. %s  %s  %s\n", i+1, cs.Bold(team.Name), cs.Gray(desc), cs.Gray(team.ID))
+		} else {
+			io.Printf("%2d. %s  %s\n", i+1, cs.Bold(team.Name), cs.Gray(team.ID))
+		}
+	}
+}
+
+// truncate shortens s to max characters, appending "..." if truncated.
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
