@@ -3,6 +3,8 @@ package list
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/timwehrle/asana/internal/config"
 
@@ -101,30 +103,127 @@ func runList(opts *ListOptions) error {
 		}
 	}
 
-	if opts.JSON {
-		type jsonProject struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		}
-		out := make([]jsonProject, len(projects))
-		for i, p := range projects {
-			out[i] = jsonProject{ID: p.ID, Name: p.Name}
-		}
-		enc := json.NewEncoder(opts.IO.Out)
-		enc.SetIndent("", "  ")
-		return enc.Encode(out)
+	return renderOutput(projects, opts.IO, opts.JSON, cfg.Workspace.Name)
+}
+
+func renderOutput(projects []*asana.Project, io *iostreams.IOStreams, jsonOutput bool, workspaceName string) error {
+	if jsonOutput {
+		return renderJSON(projects, io)
+	}
+	return renderText(projects, io, workspaceName)
+}
+
+func renderJSON(projects []*asana.Project, io *iostreams.IOStreams) error {
+	type jsonRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+	}
+	type jsonProject struct {
+		ID          string   `json:"id"`
+		Name        string   `json:"name"`
+		Archived    *bool    `json:"archived"`
+		Color       string   `json:"color,omitempty"`
+		DefaultView string   `json:"default_view,omitempty"`
+		DueOn       string   `json:"due_on,omitempty"`
+		StartOn     string   `json:"start_on,omitempty"`
+		Notes       string   `json:"notes,omitempty"`
+		Owner       *jsonRef `json:"owner"`
+		Team        *jsonRef `json:"team"`
+		Public      *bool    `json:"public"`
+		CreatedAt   string   `json:"created_at,omitempty"`
+		ModifiedAt  string   `json:"modified_at,omitempty"`
 	}
 
-	cs := opts.IO.ColorScheme()
-	fmt.Fprintf(opts.IO.Out, "\nProjects in %s:\n\n", cs.Bold(cfg.Workspace.Name))
-	if len(projects) == 0 {
-		fmt.Fprintln(opts.IO.Out, "No projects found")
+	out := make([]jsonProject, len(projects))
+	for i, p := range projects {
+		jp := jsonProject{
+			ID:          p.ID,
+			Name:        p.Name,
+			Archived:    p.Archived,
+			Color:       p.Color,
+			DefaultView: string(p.DefaultView),
+			Notes:       p.Notes,
+			Public:      p.Public,
+		}
+
+		if p.DueOn != nil {
+			jp.DueOn = time.Time(*p.DueOn).Format("2006-01-02")
+		}
+		if p.StartOn != nil {
+			jp.StartOn = time.Time(*p.StartOn).Format("2006-01-02")
+		}
+		if p.CreatedAt != nil {
+			jp.CreatedAt = p.CreatedAt.Format(time.RFC3339)
+		}
+		if p.ModifiedAt != nil {
+			jp.ModifiedAt = p.ModifiedAt.Format(time.RFC3339)
+		}
+		if p.Owner != nil {
+			jp.Owner = &jsonRef{ID: p.Owner.ID, Name: p.Owner.Name}
+		}
+		if p.Team != nil {
+			jp.Team = &jsonRef{ID: p.Team.ID, Name: p.Team.Name}
+		}
+
+		out[i] = jp
 	}
-	for i, project := range projects {
-		fmt.Fprintf(opts.IO.Out, "%d. %s\n", i+1, cs.Bold(project.Name))
+
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
+func renderText(projects []*asana.Project, io *iostreams.IOStreams, workspaceName string) error {
+	cs := io.ColorScheme()
+	fmt.Fprintf(io.Out, "\nProjects in %s:\n\n", cs.Bold(workspaceName))
+
+	if len(projects) == 0 {
+		fmt.Fprintln(io.Out, "No projects found")
+		return nil
+	}
+
+	for i, p := range projects {
+		ownerName := ""
+		if p.Owner != nil {
+			ownerName = p.Owner.Name
+		}
+		teamName := ""
+		if p.Team != nil {
+			teamName = p.Team.Name
+		}
+		dueOn := ""
+		if p.DueOn != nil {
+			dueOn = time.Time(*p.DueOn).Format("2006-01-02")
+		}
+
+		// Line 1: number + bold name
+		line := fmt.Sprintf("%d. %s", i+1, cs.Bold(p.Name))
+
+		// Append metadata inline
+		var meta []string
+		if ownerName != "" {
+			meta = append(meta, ownerName)
+		}
+		if teamName != "" {
+			meta = append(meta, teamName)
+		}
+		if dueOn != "" {
+			meta = append(meta, fmt.Sprintf("Due: %s", dueOn))
+		}
+		if len(meta) > 0 {
+			line += "  " + cs.Gray("("+joinParts(meta)+")")
+		}
+
+		line += "  " + cs.Gray(p.ID)
+		fmt.Fprintln(io.Out, line)
 	}
 
 	return nil
+}
+
+// joinParts joins non-empty strings with " | ".
+func joinParts(parts []string) string {
+	return fmt.Sprintf("%s", strings.Join(parts, " | "))
 }
 
 func fetchFavoriteProjects(

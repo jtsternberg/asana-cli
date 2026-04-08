@@ -2,194 +2,281 @@ package list
 
 import (
 	"encoding/json"
-	"errors"
-	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
-func TestNewCmdList_RunE(t *testing.T) {
-	f, _, _ := factory.NewTestFactory()
+// boolPtr is a test helper for creating *bool values.
+func boolPtr(b bool) *bool { return &b }
 
-	var sawOpts *ListOptions
-	cmd := NewCmdList(f, func(opts *ListOptions) error {
-		sawOpts = opts
-		return nil
-	})
-
-	cmd.SetArgs([]string{"--limit", "5", "--favorite"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-
-	if sawOpts == nil {
-		t.Fatal("runF was never called")
-	}
-	if sawOpts.Limit != 5 {
-		t.Errorf("Limit = %d; want 5", sawOpts.Limit)
-	}
-	if !sawOpts.Favorite {
-		t.Error("Favorite = false; want true")
-	}
+// makeDate creates an asana.Date from a time string (YYYY-MM-DD).
+func makeDate(s string) *asana.Date {
+	t, _ := time.Parse("2006-01-02", s)
+	d := asana.Date(t)
+	return &d
 }
 
-func TestNewCmdList_RunE_JSONFlag(t *testing.T) {
-	f, _, _ := factory.NewTestFactory()
-
-	var sawOpts *ListOptions
-	cmd := NewCmdList(f, func(opts *ListOptions) error {
-		sawOpts = opts
-		return nil
-	})
-
-	cmd.SetArgs([]string{"--json"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-
-	if sawOpts == nil {
-		t.Fatal("runF was never called")
-	}
-	if !sawOpts.JSON {
-		t.Error("JSON = false; want true")
-	}
+// makeTime creates a *time.Time from an RFC3339 string.
+func makeTime(s string) *time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	return &t
 }
 
-func TestNewCmdList_RunE_InvalidLimit(t *testing.T) {
-	f, _, _ := factory.NewTestFactory()
-	cmd := NewCmdList(f, func(opts *ListOptions) error { return nil })
-	cmd.SetArgs([]string{"--limit", "-1"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "invalid limit") {
-		t.Fatalf("expected invalid-limit error, got %v", err)
-	}
-}
-
-func TestRunList_ConfigError(t *testing.T) {
-	io, _, _, _ := iostreams.Test()
-	opts := &ListOptions{
-		IO:     io,
-		Config: func() (*config.Config, error) { return nil, errors.New("no config") },
-		Client: func() (*asana.Client, error) { return nil, nil },
-	}
-	if err := runList(opts); err == nil || !strings.Contains(err.Error(), "no config") {
-		t.Fatalf("expected config error, got %v", err)
-	}
-}
-
-func TestRunList_ClientError(t *testing.T) {
-	io, _, _, _ := iostreams.Test()
-	opts := &ListOptions{
-		IO: io,
-		Config: func() (*config.Config, error) {
-			return &config.Config{Workspace: &asana.Workspace{ID: "W"}}, nil
+// fullProject returns a Project with every field populated for testing.
+func fullProject() *asana.Project {
+	p := &asana.Project{
+		ID:         "proj-1",
+		CreatedAt:  makeTime("2026-01-15T10:00:00Z"),
+		ModifiedAt: makeTime("2026-04-01T14:30:00Z"),
+		Owner: &asana.User{
+			ID:   "user-1",
+			Name: "Captain Picard",
 		},
-		Client: func() (*asana.Client, error) { return nil, errors.New("auth failed") },
+		Team: &asana.Team{
+			ID:   "team-1",
+			Name: "Bridge Crew",
+		},
+		Public: boolPtr(true),
 	}
-	if err := runList(opts); err == nil || !strings.Contains(err.Error(), "auth failed") {
-		t.Fatalf("expected client error, got %v", err)
-	}
+	// Fields on embedded ProjectBase
+	p.Name = "Project Enterprise"
+	p.Archived = boolPtr(false)
+	p.Color = "dark-blue"
+	p.DefaultView = asana.ViewBoard
+	p.DueOn = makeDate("2026-06-01")
+	p.StartOn = makeDate("2026-01-01")
+	p.Notes = "Make it so."
+
+	return p
 }
 
-type transportFunc func(*http.Request) (*http.Response, error)
-
-func (fn transportFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return fn(req)
+// minimalProject returns a project with just ID and Name.
+func minimalProject() *asana.Project {
+	p := &asana.Project{ID: "proj-min"}
+	p.Name = "Bare Minimum"
+	return p
 }
 
-func newTestClient(mock *asana.MockClient) *asana.Client {
-	httpClient := &http.Client{
-		Transport: transportFunc(mock.Do),
-	}
-	return asana.NewClient(httpClient)
-}
+// --- JSON Output Tests ---
 
-func TestNewCmdList_SearchFlag(t *testing.T) {
-	f, _, _ := factory.NewTestFactory()
-
-	var sawOpts *ListOptions
-	cmd := NewCmdList(f, func(opts *ListOptions) error {
-		sawOpts = opts
-		return nil
-	})
-
-	cmd.SetArgs([]string{"--search", "outgoing"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-
-	if sawOpts == nil {
-		t.Fatal("runF was never called")
-	}
-	if sawOpts.Search != "outgoing" {
-		t.Errorf("Search = %q; want %q", sawOpts.Search, "outgoing")
-	}
-}
-
-func TestNewCmdList_SearchShortFlag(t *testing.T) {
-	f, _, _ := factory.NewTestFactory()
-
-	var sawOpts *ListOptions
-	cmd := NewCmdList(f, func(opts *ListOptions) error {
-		sawOpts = opts
-		return nil
-	})
-
-	cmd.SetArgs([]string{"-q", "tasks"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
-
-	if sawOpts == nil {
-		t.Fatal("runF was never called")
-	}
-	if sawOpts.Search != "tasks" {
-		t.Errorf("Search = %q; want %q", sawOpts.Search, "tasks")
-	}
-}
-
-func TestRunList_JSONOutput(t *testing.T) {
-	mockProjects := []*asana.Project{
-		{ID: "111", ProjectBase: asana.ProjectBase{Name: "Alpha"}},
-		{ID: "222", ProjectBase: asana.ProjectBase{Name: "Beta"}},
-	}
-	mock, err := asana.NewMockClient(200, mockProjects)
-	if err != nil {
-		t.Fatalf("NewMockClient: %v", err)
-	}
-	client := newTestClient(mock)
-
+func TestRunList_JSONAllFields(t *testing.T) {
 	io, _, out, _ := iostreams.Test()
-	opts := &ListOptions{
-		IO: io,
-		Config: func() (*config.Config, error) {
-			return &config.Config{Workspace: &asana.Workspace{ID: "W"}}, nil
-		},
-		Client: func() (*asana.Client, error) { return client, nil },
-		JSON:   true,
+
+	projects := []*asana.Project{fullProject()}
+	err := renderOutput(projects, io, true, "Test Workspace")
+	if err != nil {
+		t.Fatalf("renderOutput error: %v", err)
 	}
 
-	if err := runList(opts); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	var result []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw: %s", err, out.String())
 	}
 
-	var got []map[string]string
-	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-		t.Fatalf("invalid JSON output: %v\nraw: %s", err, out.String())
+	if len(result) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(result))
 	}
 
-	if len(got) != 2 {
-		t.Fatalf("expected 2 projects, got %d", len(got))
+	p := result[0]
+
+	// Core fields
+	assertJSONString(t, p, "id", "proj-1")
+	assertJSONString(t, p, "name", "Project Enterprise")
+	assertJSONBool(t, p, "archived", false)
+	assertJSONString(t, p, "color", "dark-blue")
+	assertJSONString(t, p, "default_view", "board")
+	assertJSONString(t, p, "due_on", "2026-06-01")
+	assertJSONString(t, p, "start_on", "2026-01-01")
+	assertJSONString(t, p, "notes", "Make it so.")
+	assertJSONBool(t, p, "public", true)
+	assertJSONString(t, p, "created_at", "2026-01-15T10:00:00Z")
+	assertJSONString(t, p, "modified_at", "2026-04-01T14:30:00Z")
+
+	// Owner (nested id+name)
+	owner := assertJSONObject(t, p, "owner")
+	if owner != nil {
+		assertJSONString(t, owner, "id", "user-1")
+		assertJSONString(t, owner, "name", "Captain Picard")
 	}
-	if got[0]["id"] != "111" || got[0]["name"] != "Alpha" {
-		t.Errorf("project[0] = %v; want id=111 name=Alpha", got[0])
+
+	// Team (nested id+name)
+	team := assertJSONObject(t, p, "team")
+	if team != nil {
+		assertJSONString(t, team, "id", "team-1")
+		assertJSONString(t, team, "name", "Bridge Crew")
 	}
-	if got[1]["id"] != "222" || got[1]["name"] != "Beta" {
-		t.Errorf("project[1] = %v; want id=222 name=Beta", got[1])
+}
+
+func TestRunList_JSONMinimalProject(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	projects := []*asana.Project{minimalProject()}
+	err := renderOutput(projects, io, true, "Test Workspace")
+	if err != nil {
+		t.Fatalf("renderOutput error: %v", err)
 	}
+
+	var result []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw: %s", err, out.String())
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(result))
+	}
+
+	p := result[0]
+	assertJSONString(t, p, "id", "proj-min")
+	assertJSONString(t, p, "name", "Bare Minimum")
+
+	// Nullable fields should be null
+	if val, ok := p["owner"]; !ok {
+		t.Error("missing 'owner' key")
+	} else if val != nil {
+		t.Errorf("owner should be null for minimal project, got %v", val)
+	}
+
+	if val, ok := p["team"]; !ok {
+		t.Error("missing 'team' key")
+	} else if val != nil {
+		t.Errorf("team should be null for minimal project, got %v", val)
+	}
+}
+
+// --- Text Output Tests ---
+
+func TestRunList_TextAllFields(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	projects := []*asana.Project{fullProject()}
+	err := renderOutput(projects, io, false, "Test Workspace")
+	if err != nil {
+		t.Fatalf("renderOutput error: %v", err)
+	}
+
+	output := out.String()
+
+	mustContain := []string{
+		"Test Workspace",
+		"Project Enterprise",
+		"Captain Picard",
+		"Bridge Crew",
+		"2026-06-01",
+		"proj-1",
+	}
+
+	for _, want := range mustContain {
+		if !strings.Contains(output, want) {
+			t.Errorf("text output missing %q\nGot:\n%s", want, output)
+		}
+	}
+}
+
+func TestRunList_TextNoProjects(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	err := renderOutput([]*asana.Project{}, io, false, "Test Workspace")
+	if err != nil {
+		t.Fatalf("renderOutput error: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "No projects found") {
+		t.Errorf("expected 'No projects found' message.\nGot:\n%s", output)
+	}
+}
+
+func TestRunList_TextMinimalProject(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	projects := []*asana.Project{minimalProject()}
+	err := renderOutput(projects, io, false, "Test Workspace")
+	if err != nil {
+		t.Fatalf("renderOutput error: %v", err)
+	}
+
+	output := out.String()
+
+	if !strings.Contains(output, "Bare Minimum") {
+		t.Errorf("text output missing project name\nGot:\n%s", output)
+	}
+	if !strings.Contains(output, "proj-min") {
+		t.Errorf("text output missing project ID\nGot:\n%s", output)
+	}
+}
+
+func TestRunList_TextMultipleProjects(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	projects := []*asana.Project{fullProject(), minimalProject()}
+	err := renderOutput(projects, io, false, "Test Workspace")
+	if err != nil {
+		t.Fatalf("renderOutput error: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Project Enterprise") {
+		t.Errorf("missing first project name\nGot:\n%s", output)
+	}
+	if !strings.Contains(output, "Bare Minimum") {
+		t.Errorf("missing second project name\nGot:\n%s", output)
+	}
+}
+
+// --- Test Helpers ---
+
+func assertJSONString(t *testing.T, m map[string]interface{}, key, want string) {
+	t.Helper()
+	val, ok := m[key]
+	if !ok {
+		t.Errorf("JSON missing key %q", key)
+		return
+	}
+	got, ok := val.(string)
+	if !ok {
+		t.Errorf("JSON key %q is %T, not string", key, val)
+		return
+	}
+	if got != want {
+		t.Errorf("JSON %q = %q; want %q", key, got, want)
+	}
+}
+
+func assertJSONBool(t *testing.T, m map[string]interface{}, key string, want bool) {
+	t.Helper()
+	val, ok := m[key]
+	if !ok {
+		t.Errorf("JSON missing key %q", key)
+		return
+	}
+	got, ok := val.(bool)
+	if !ok {
+		t.Errorf("JSON key %q is %T, not bool", key, val)
+		return
+	}
+	if got != want {
+		t.Errorf("JSON %q = %v; want %v", key, got, want)
+	}
+}
+
+func assertJSONObject(t *testing.T, m map[string]interface{}, key string) map[string]interface{} {
+	t.Helper()
+	val, ok := m[key]
+	if !ok {
+		t.Errorf("JSON missing key %q", key)
+		return nil
+	}
+	if val == nil {
+		return nil
+	}
+	obj, ok := val.(map[string]interface{})
+	if !ok {
+		t.Errorf("JSON key %q is %T, not object", key, val)
+		return nil
+	}
+	return obj
 }

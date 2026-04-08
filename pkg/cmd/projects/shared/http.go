@@ -15,7 +15,22 @@ func FetchAllProjects(
 	projects := make([]*asana.Project, 0, initialCapacity)
 	options := &asana.Options{
 		Limit:  limit,
-		Fields: []string{"name"},
+		Fields: []string{
+			"name",
+			"archived",
+			"color",
+			"default_view",
+			"due_on",
+			"start_on",
+			"notes",
+			"owner",
+			"owner.name",
+			"team",
+			"team.name",
+			"public",
+			"created_at",
+			"modified_at",
+		},
 	}
 
 	for {
