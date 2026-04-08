@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.1.0] - 2026-04-08
+
+### Added
+
+- **All commands now display full API data** — every CLI command (`tasks view/list/search`, `projects list/tasks/sections`, `users list`, `teams list`, `tags list`, `workspaces list`, `time status/create`) now shows all available fields from the Asana API in both text and JSON output
+- **`--json` flag on 6 more commands** — `teams list`, `tags list`, `workspaces list`, `projects sections`, `time status`, and `time create` now support structured JSON output
+- **Assignee in task view** — `tasks view` was fetching the assignee from the API but never displaying it. Now shown in both text and JSON output
+- **Rich task list/search output** — `tasks list` and `tasks search` now show assignee, completion status, projects, tags, custom fields, dependencies, and more (previously only showed name and due date)
+- **User email in users list** — `users list` now displays email addresses in both text and JSON output
+- **Custom fields in task output** — task commands display custom field names and display values
+- **Dependencies/dependents in task view** — task view now shows blocking and blocked-by relationships
+- **~60 new tests** across all updated commands
+
+### Changed
+
+- **Skill doc uses live `--help` output** — replaced static flag tables with ` ```! ` shell execution blocks that inline the actual `--help` text at skill load time. Docs can never go stale.
+- **Task view no longer double-fetches** — `displayDetails` was redundantly calling `task.Fetch()` after the caller already fetched. Removed the extra API call.
+- **Projects list requests more API fields** — `opt_fields` expanded to include owner, team, dates, notes, and more
+
+### Fixed
+
+- **`tasks view --json` returned `"assignee": null` for assigned tasks** — the Task struct had the assignee populated but the JSON output struct never included it
+
 ## [3.0.0] - 2026-04-03
 
 ### BREAKING
