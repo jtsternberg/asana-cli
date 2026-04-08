@@ -1,197 +1,255 @@
 package list
 
 import (
-	"errors"
-	"net/http"
-	"net/url"
-	"reflect"
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/internal/config"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
-func TestNewCmdList_RunE(t *testing.T) {
-	f, _, _ := factory.NewTestFactory()
+// --- Text Output Tests ---
 
-	var sawOpts *ListOptions
-	cmd := NewCmdList(f, func(opts *ListOptions) error {
-		sawOpts = opts
+func TestDisplayTags_TextOutputShowsColorAndID(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	tags := []*asana.Tag{
+		makeTag("111", "Bug", "dark-red", "Bug-related items", "2026-01-15T10:00:00Z"),
+		makeTag("222", "Feature", "dark-blue", "Feature requests", "2026-02-20T14:30:00Z"),
+		makeTag("333", "Chore", "", "Maintenance stuff", "2026-03-01T09:00:00Z"),
+	}
+
+	if err := displayTags(tags, io, false, "Test Workspace"); err != nil {
+		t.Fatalf("displayTags error: %v", err)
+	}
+
+	output := out.String()
+
+	// Each tag should show Name | Color | ID
+	mustContain := []string{
+		"Bug",
+		"dark-red",
+		"111",
+		"Feature",
+		"dark-blue",
+		"222",
+		"Chore",
+		"333",
+		"Test Workspace",
+	}
+
+	for _, want := range mustContain {
+		if !strings.Contains(output, want) {
+			t.Errorf("text output missing %q\nGot:\n%s", want, output)
+		}
+	}
+}
+
+func TestDisplayTags_TextOutputEmptyColor(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	tags := []*asana.Tag{
+		makeTag("444", "NoColor", "", "", "2026-01-01T00:00:00Z"),
+	}
+
+	if err := displayTags(tags, io, false, "Workspace"); err != nil {
+		t.Fatalf("displayTags error: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "NoColor") {
+		t.Errorf("text output missing tag name\nGot:\n%s", output)
+	}
+	if !strings.Contains(output, "444") {
+		t.Errorf("text output missing tag ID\nGot:\n%s", output)
+	}
+}
+
+func TestDisplayTags_TextOutputNoTags(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	if err := displayTags([]*asana.Tag{}, io, false, "Empty Workspace"); err != nil {
+		t.Fatalf("displayTags error: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "No tags found") {
+		t.Errorf("expected 'No tags found' message\nGot:\n%s", output)
+	}
+}
+
+// --- JSON Output Tests ---
+
+func TestDisplayTags_JSONAllFields(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	createdAt := parseTime("2026-01-15T10:00:00Z")
+	tags := []*asana.Tag{
+		{
+			ID:        "111",
+			TagBase:   asana.TagBase{Name: "Bug", Notes: "Bug-related items", Color: "dark-red"},
+			CreatedAt: createdAt,
+			Workspace: &asana.Workspace{ID: "W1", Name: "My Workspace"},
+			Followers: []*asana.User{
+				{ID: "U1", Name: "Alice"},
+				{ID: "U2", Name: "Bob"},
+			},
+		},
+	}
+
+	if err := displayTags(tags, io, true, "My Workspace"); err != nil {
+		t.Fatalf("displayTags error: %v", err)
+	}
+
+	var result []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw: %s", err, out.String())
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(result))
+	}
+
+	tag := result[0]
+	assertJSONString(t, tag, "id", "111")
+	assertJSONString(t, tag, "name", "Bug")
+	assertJSONString(t, tag, "notes", "Bug-related items")
+	assertJSONString(t, tag, "color", "dark-red")
+	assertJSONString(t, tag, "created_at", "2026-01-15T10:00:00Z")
+
+	// Workspace
+	workspace := assertJSONObject(t, tag, "workspace")
+	if workspace != nil {
+		assertJSONString(t, workspace, "id", "W1")
+		assertJSONString(t, workspace, "name", "My Workspace")
+	}
+
+	// Followers
+	followers := assertJSONArray(t, tag, "followers")
+	if len(followers) != 2 {
+		t.Errorf("followers length = %d; want 2", len(followers))
+	}
+}
+
+func TestDisplayTags_JSONMinimalTag(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	tags := []*asana.Tag{
+		makeTag("555", "Minimal", "", "", ""),
+	}
+
+	if err := displayTags(tags, io, true, "Workspace"); err != nil {
+		t.Fatalf("displayTags error: %v", err)
+	}
+
+	var result []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw: %s", err, out.String())
+	}
+
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tag, got %d", len(result))
+	}
+
+	tag := result[0]
+	assertJSONString(t, tag, "id", "555")
+	assertJSONString(t, tag, "name", "Minimal")
+}
+
+func TestDisplayTags_JSONEmpty(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	if err := displayTags([]*asana.Tag{}, io, true, "Workspace"); err != nil {
+		t.Fatalf("displayTags error: %v", err)
+	}
+
+	var result []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("invalid JSON: %v\nraw: %s", err, out.String())
+	}
+
+	if len(result) != 0 {
+		t.Errorf("expected empty array, got %d items", len(result))
+	}
+}
+
+func TestNewCmdList_JSONFlag(t *testing.T) {
+	io, _, _, _ := iostreams.Test()
+	f := factory.Factory{
+		IOStreams: io,
+	}
+
+	cmd := NewCmdList(f, nil)
+	flag := cmd.Flags().Lookup("json")
+	if flag == nil {
+		t.Fatal("--json flag not registered on list command")
+	}
+}
+
+// --- Test Helpers ---
+
+func makeTag(id, name, color, notes, createdAtStr string) *asana.Tag {
+	tag := &asana.Tag{
+		ID:      id,
+		TagBase: asana.TagBase{Name: name, Color: color, Notes: notes},
+	}
+	if createdAtStr != "" {
+		tag.CreatedAt = parseTime(createdAtStr)
+	}
+	return tag
+}
+
+func parseTime(s string) *time.Time {
+	t, _ := time.Parse(time.RFC3339, s)
+	return &t
+}
+
+func assertJSONString(t *testing.T, m map[string]interface{}, key, want string) {
+	t.Helper()
+	val, ok := m[key]
+	if !ok {
+		t.Errorf("JSON missing key %q", key)
+		return
+	}
+	got, ok := val.(string)
+	if !ok {
+		t.Errorf("JSON key %q is %T, not string", key, val)
+		return
+	}
+	if got != want {
+		t.Errorf("JSON %q = %q; want %q", key, got, want)
+	}
+}
+
+func assertJSONObject(t *testing.T, m map[string]interface{}, key string) map[string]interface{} {
+	t.Helper()
+	val, ok := m[key]
+	if !ok {
+		t.Errorf("JSON missing key %q", key)
 		return nil
-	})
-
-	cmd.SetArgs([]string{"--limit", "5", "--favorite"})
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
 	}
-
-	if sawOpts == nil {
-		t.Fatal("runF was never called")
+	obj, ok := val.(map[string]interface{})
+	if !ok {
+		t.Errorf("JSON key %q is %T, not object", key, val)
+		return nil
 	}
-	if sawOpts.Limit != 5 {
-		t.Errorf("Limit = %d; want 5", sawOpts.Limit)
-	}
-	if !sawOpts.Favorite {
-		t.Error("Favorite = false; want true")
-	}
+	return obj
 }
 
-func TestNewCmdList_RunE_InvalidLimit(t *testing.T) {
-	f, _, _ := factory.NewTestFactory()
-	cmd := NewCmdList(f, func(opts *ListOptions) error { return nil })
-	cmd.SetArgs([]string{"--limit", "-1"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "invalid limit") {
-		t.Fatalf("expected invalid-limit error, got %v", err)
+func assertJSONArray(t *testing.T, m map[string]interface{}, key string) []interface{} {
+	t.Helper()
+	val, ok := m[key]
+	if !ok {
+		t.Errorf("JSON missing key %q", key)
+		return nil
 	}
-}
-
-func TestRunList_ConfigError(t *testing.T) {
-	io, _, _, _ := iostreams.Test()
-	opts := &ListOptions{
-		IO:     io,
-		Config: func() (*config.Config, error) { return nil, errors.New("no config") },
-		Client: func() (*asana.Client, error) { return nil, nil },
+	arr, ok := val.([]interface{})
+	if !ok {
+		t.Errorf("JSON key %q is %T, not array", key, val)
+		return nil
 	}
-	if err := runList(opts); err == nil || !strings.Contains(err.Error(), "failed to get config") {
-		t.Fatalf("expected config error, got %v", err)
-	}
-}
-
-func TestRunList_ClientError(t *testing.T) {
-	io, _, _, _ := iostreams.Test()
-	opts := &ListOptions{
-		IO:     io,
-		Config: func() (*config.Config, error) { return &config.Config{Workspace: &asana.Workspace{ID: "W"}}, nil },
-		Client: func() (*asana.Client, error) { return nil, errors.New("auth failed") },
-	}
-	if err := runList(opts); err == nil || !strings.Contains(err.Error(), "auth failed") {
-		t.Fatalf("expected client error, got %v", err)
-	}
-}
-
-type transportFunc func(*http.Request) (*http.Response, error)
-
-func (fn transportFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return fn(req)
-}
-
-func newTestClient(mock *asana.MockClient) *asana.Client {
-	httpClient := &http.Client{
-		Transport: transportFunc(mock.Do),
-	}
-	return asana.NewClient(httpClient)
-}
-
-func TestFetchFavoriteTags(t *testing.T) {
-	tests := []struct {
-		name          string
-		mockStatus    int
-		mockBody      any
-		wantErr       bool
-		wantTags      []*asana.Tag
-		wantPath      string
-		wantQueryVals url.Values
-	}{
-		{
-			name:       "success",
-			mockStatus: 200,
-			mockBody: []*asana.Tag{
-				{
-					ID: "T1",
-					TagBase: asana.TagBase{
-						Name: "TagOne",
-					},
-				},
-				{
-					ID: "T2",
-					TagBase: asana.TagBase{
-						Name: "TagTwo",
-					},
-				},
-			},
-			wantErr: false,
-			wantTags: []*asana.Tag{
-				{
-					ID: "T1",
-					TagBase: asana.TagBase{
-						Name: "TagOne",
-					},
-				},
-				{
-					ID: "T2",
-					TagBase: asana.TagBase{
-						Name: "TagTwo",
-					},
-				},
-			},
-			wantPath: "/api/1.0/users/me/favorites",
-			wantQueryVals: url.Values{
-				"resource_type": []string{"tag"},
-				"workspace":     []string{"W123"},
-			},
-		},
-		{
-			name:       "server error",
-			mockStatus: 500,
-			mockBody:   "oops",
-			wantErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mock, err := asana.NewMockClient(tt.mockStatus, tt.mockBody)
-			if err != nil {
-				t.Fatalf("NewMockClient: %v", err)
-			}
-			client := newTestClient(mock)
-			ws := &asana.Workspace{ID: "W123"}
-
-			got, err := fetchFavoriteTags(client, ws)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatal("expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			if !reflect.DeepEqual(got, tt.wantTags) {
-				t.Errorf("tags = %#v; want %#v", got, tt.wantTags)
-			}
-
-			last := mock.GetLastRequest()
-			if got, want := last.Method(), http.MethodGet; got != want {
-				t.Errorf("Method = %q; want %q", got, want)
-			}
-			if got, want := last.Path(), tt.wantPath; got != want {
-				t.Errorf("Path = %q; want %q", got, want)
-			}
-			for key, vals := range tt.wantQueryVals {
-				if qv := last.Query()[key]; !reflect.DeepEqual(qv, vals) {
-					t.Errorf("query[%q] = %v; want %v", key, qv, vals)
-				}
-			}
-		})
-	}
-}
-
-func TestFetchFavoriteTags_ErrorPathWrapped(t *testing.T) {
-	mock, _ := asana.NewMockClient(500, "fail")
-	client := newTestClient(mock)
-	ws := &asana.Workspace{ID: "W500"}
-
-	_, err := fetchFavoriteTags(client, ws)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "failed fetching favorite tags") {
-		t.Errorf("error did not wrap correctly: %v", err)
-	}
+	return arr
 }

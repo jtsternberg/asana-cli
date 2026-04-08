@@ -1,7 +1,9 @@
 package list
 
 import (
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
@@ -19,6 +21,7 @@ type ListOptions struct {
 
 	Limit    int
 	Favorite bool
+	JSON     bool
 }
 
 func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command {
@@ -50,12 +53,12 @@ func NewCmdList(f factory.Factory, runF func(*ListOptions) error) *cobra.Command
 
 	cmd.Flags().IntVarP(&opts.Limit, "limit", "l", 0, "Max number of tags to display")
 	cmd.Flags().BoolVarP(&opts.Favorite, "favorite", "f", false, "List your favorite tags")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	return cmd
 }
 
 func runList(opts *ListOptions) error {
-	cs := opts.IO.ColorScheme()
 	cfg, err := opts.Config()
 	if err != nil {
 		return fmt.Errorf("failed to get config: %w", err)
@@ -78,12 +81,70 @@ func runList(opts *ListOptions) error {
 		return err
 	}
 
-	fmt.Fprintf(opts.IO.Out, "\nTags in %s:\n\n", cs.Bold(cfg.Workspace.Name))
+	return displayTags(tags, opts.IO, opts.JSON, cfg.Workspace.Name)
+}
+
+func displayTags(tags []*asana.Tag, io *iostreams.IOStreams, jsonOutput bool, workspaceName string) error {
+	if jsonOutput {
+		return displayTagsJSON(tags, io)
+	}
+	return displayTagsText(tags, io, workspaceName)
+}
+
+func displayTagsJSON(tags []*asana.Tag, io *iostreams.IOStreams) error {
+	type jsonRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+	}
+	type jsonTag struct {
+		ID        string     `json:"id"`
+		Name      string     `json:"name"`
+		Notes     string     `json:"notes,omitempty"`
+		Color     string     `json:"color,omitempty"`
+		CreatedAt string     `json:"created_at,omitempty"`
+		Workspace *jsonRef   `json:"workspace,omitempty"`
+		Followers []*jsonRef `json:"followers,omitempty"`
+	}
+
+	result := make([]jsonTag, 0, len(tags))
+	for _, t := range tags {
+		jt := jsonTag{
+			ID:    t.ID,
+			Name:  t.Name,
+			Notes: t.Notes,
+			Color: t.Color,
+		}
+		if t.CreatedAt != nil {
+			jt.CreatedAt = t.CreatedAt.Format(time.RFC3339)
+		}
+		if t.Workspace != nil {
+			jt.Workspace = &jsonRef{ID: t.Workspace.ID, Name: t.Workspace.Name}
+		}
+		for _, f := range t.Followers {
+			jt.Followers = append(jt.Followers, &jsonRef{ID: f.ID, Name: f.Name})
+		}
+		result = append(result, jt)
+	}
+
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(result)
+}
+
+func displayTagsText(tags []*asana.Tag, io *iostreams.IOStreams, workspaceName string) error {
+	cs := io.ColorScheme()
+
+	fmt.Fprintf(io.Out, "\nTags in %s:\n\n", cs.Bold(workspaceName))
 	if len(tags) == 0 {
-		fmt.Fprintln(opts.IO.Out, "No tags found")
+		fmt.Fprintln(io.Out, "No tags found")
+		return nil
 	}
 	for i, t := range tags {
-		fmt.Fprintf(opts.IO.Out, "%d. %s\n", i+1, cs.Bold(t.Name))
+		color := t.Color
+		if color == "" {
+			color = "-"
+		}
+		fmt.Fprintf(io.Out, "%d. %s | %s | %s\n", i+1, cs.Bold(t.Name), color, cs.Gray(t.ID))
 	}
 
 	return nil
