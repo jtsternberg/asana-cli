@@ -3,6 +3,7 @@ package view
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/timwehrle/asana/internal/config"
@@ -79,7 +80,7 @@ func viewRun(opts *ViewOptions) error {
 		if err := task.Fetch(client); err != nil {
 			return fmt.Errorf("task %q not found: %w", opts.TaskID, err)
 		}
-		return displayDetails(client, task, opts.IO, opts.JSON)
+		return displayDetails(task, opts.IO, opts.JSON)
 	}
 
 	// Interactive: select from your tasks
@@ -104,7 +105,10 @@ func viewRun(opts *ViewOptions) error {
 		return err
 	}
 
-	return displayDetails(client, selectedTask, opts.IO, opts.JSON)
+	if err := selectedTask.Fetch(client); err != nil {
+		return fmt.Errorf("failed to load task details: %w", err)
+	}
+	return displayDetails(selectedTask, opts.IO, opts.JSON)
 }
 
 func prompt(allTasks []*asana.Task, prompter prompter.Prompter) (*asana.Task, error) {
@@ -124,29 +128,35 @@ func prompt(allTasks []*asana.Task, prompter prompter.Prompter) (*asana.Task, er
 	return allTasks[index], nil
 }
 
-func displayDetails(client *asana.Client, task *asana.Task, io *iostreams.IOStreams, jsonOutput bool) error {
+func displayDetails(task *asana.Task, io *iostreams.IOStreams, jsonOutput bool) error {
 	cs := io.ColorScheme()
 
-	err := task.Fetch(client)
-	if err != nil {
-		return err
-	}
-
 	if jsonOutput {
+		type jsonAssignee struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		}
 		type jsonTask struct {
-			ID           string   `json:"id"`
-			Name         string   `json:"name"`
-			DueOn        string   `json:"due_on,omitempty"`
-			Notes        string   `json:"notes,omitempty"`
-			Projects     []string `json:"projects,omitempty"`
-			Tags         []string `json:"tags,omitempty"`
-			PermalinkURL string   `json:"permalink_url,omitempty"`
+			ID           string        `json:"id"`
+			Name         string        `json:"name"`
+			Assignee     *jsonAssignee `json:"assignee"`
+			DueOn        string        `json:"due_on,omitempty"`
+			Notes        string        `json:"notes,omitempty"`
+			Projects     []string      `json:"projects,omitempty"`
+			Tags         []string      `json:"tags,omitempty"`
+			PermalinkURL string        `json:"permalink_url,omitempty"`
 		}
 		jt := jsonTask{
 			ID:           task.ID,
 			Name:         task.Name,
 			Notes:        task.Notes,
 			PermalinkURL: task.PermalinkURL,
+		}
+		if task.Assignee != nil {
+			jt.Assignee = &jsonAssignee{
+				ID:   task.Assignee.ID,
+				Name: task.Assignee.Name,
+			}
 		}
 		if task.DueOn != nil {
 			jt.DueOn = time.Time(*task.DueOn).Format("2006-01-02")
@@ -162,10 +172,16 @@ func displayDetails(client *asana.Client, task *asana.Task, io *iostreams.IOStre
 		return enc.Encode(jt)
 	}
 
+	assigneeName := "Unassigned"
+	if task.Assignee != nil {
+		assigneeName = task.Assignee.Name
+	}
+
 	fmt.Fprintf(
 		io.Out,
-		"%s | Due: %s | %s\n",
+		"%s | Assignee: %s | Due: %s | %s\n",
 		cs.Bold(task.Name),
+		assigneeName,
 		format.Date(task.DueOn),
 		format.Projects(task.Projects),
 	)
