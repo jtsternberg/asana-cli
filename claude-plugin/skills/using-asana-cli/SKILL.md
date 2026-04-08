@@ -37,77 +37,31 @@ If not authenticated, run `asana auth login` and follow the prompts.
 
 ### Create a task (non-interactive)
 
-Provide `--name`, `--assignee`, and `--project` to skip all prompts:
+Provide `--name`, `--assignee`, and `--project` to skip all prompts. When all three are provided, non-interactive mode is auto-detected. Without flags, falls back to interactive prompts.
 
-```bash
-asana tasks create \
-  -n "Task name" \
-  -a "Assignee Name" \
-  -p "Project Name" \
-  -s "Section Name" \
-  -d "2026-04-01" \
-  -m "Task description" \
-  -f "Follower One,Follower Two"
+```!
+asana tasks create --help
 ```
-
-**Flags:**
-| Flag | Short | Required | Description |
-|------|-------|----------|-------------|
-| `--name` | `-n` | Yes* | Task name |
-| `--assignee` | `-a` | Yes* | Assignee name, ID, or `me` |
-| `--project` | `-p` | Yes* | Project name or ID |
-| `--section` | `-s` | No | Section name or ID (defaults to first section) |
-| `--due` | `-d` | No | Due date: `YYYY-MM-DD`, `today`, `tomorrow` |
-| `--description` | `-m` | No | Task description |
-| `--followers` | `-f` | No | Comma-separated follower names or IDs |
-| `--non-interactive` | | No | Explicitly prevent prompts; errors on missing required fields |
-
-*Required in non-interactive mode. When all three are provided, non-interactive mode is auto-detected.
-
-Without flags, the command falls back to interactive prompts.
 
 ### Update a task (non-interactive)
 
-Pass a task ID as the first argument to use flags:
+Pass a task ID as the first argument to use flags. Without a task ID, falls back to interactive mode.
 
-```bash
-asana tasks update <task-id> \
-  -n "New name" \
-  -d "2026-04-01" \
-  -a "New Assignee" \
-  -f "Follower Name" \
-  --complete
+```!
+asana tasks update --help
 ```
-
-**Flags:**
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--name` | `-n` | New task name |
-| `--description` | `-m` | New description |
-| `--due` | `-d` | New due date |
-| `--assignee` | `-a` | New assignee name or `me` |
-| `--followers` | `-f` | Comma-separated follower names to add |
-| `--complete` | | Mark task as completed |
-| `--non-interactive` | | Explicitly prevent prompts |
-
-Without a task ID, falls back to interactive mode.
 
 ### Delete a task
 
-```bash
-asana tasks delete <task-id>
+```!
+asana tasks delete --help
 ```
 
 ### View a task
 
-```bash
-asana tasks view <task-id>
-asana tasks view <task-id> --json
+```!
+asana tasks view --help
 ```
-
-The view command displays all task fields: assignee, completion status, dates (due, start, created, modified, completed), parent task, custom fields, dependencies, dependents, followers, memberships, subtask count, and more.
-
-Without a task ID, falls back to interactive selection.
 
 ### List vs Search
 
@@ -128,48 +82,17 @@ asana tasks search --assignee me --query "X"
 
 Lists tasks assigned to a user (defaults to `me`). Cannot filter by creator — use `search` for that.
 
-```bash
-asana tasks list [--sort due|due-desc|asc|desc|created-at] [--limit 20] [--user me] [--json]
+```!
+asana tasks list --help
 ```
 
 ### Search tasks
 
-Flexible search across all tasks in the workspace.
+Flexible search across all tasks in the workspace. **Note:** `--assignee` has no default — omit it to search across all assignees.
 
-```bash
-# Tasks assigned to me
-asana tasks search --assignee me
-
-# Tasks I created (regardless of assignee)
-asana tasks search --creator me
-
-# Keyword search with limit
-asana tasks search --query "deploy" --limit 5
-
-# Blocked tasks due this week
-asana tasks search --is-blocked --due-on-after 2026-03-09 --due-on-before 2026-03-13
+```!
+asana tasks search --help
 ```
-
-**Search flags:**
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--query` | `-q` | Full-text search on task names and descriptions |
-| `--assignee` | `-a` | Comma-separated assignee names, IDs, or `me`. Omit to search all |
-| `--creator` | | Comma-separated creator names, IDs, or `me` |
-| `--limit` | `-l` | Limit number of results |
-| `--sort-by` | | Sort by: `due_date`, `created_at`, `completed_at`, `likes`, `modified_at` (default: `modified_at`) |
-| `--sort-asc` | | Sort ascending (default is descending) |
-| `--due-on` | | Tasks due on exact date (`YYYY-MM-DD`) |
-| `--due-on-before` | | Tasks due before date |
-| `--due-on-after` | | Tasks due after date |
-| `--is-blocked` | | Only tasks with incomplete dependencies |
-| `--tags-all` | | Comma-separated tag IDs to filter by |
-| `--type` | | Resource subtype: `default_task`, `milestone` (default: `default_task`) |
-| `--exclude-assignee` | | Comma-separated user IDs to exclude |
-| `--exclude-creator` | | Comma-separated creator IDs to exclude |
-| `--json` | | Output as JSON |
-
-**Note:** `--assignee` has no default — omit it to search across all assignees.
 
 ## Structured Output
 
@@ -210,83 +133,68 @@ Text output also includes rich data: task list/search show assignee, due date, p
 
 ### List projects
 
-```bash
-asana projects list -l 20              # Limit to 20
-asana projects list -f                 # Favorites only
-asana projects list -s asc             # Sort ascending
-asana projects list -q "outgoing"      # Search by name (uses Asana typeahead API)
-asana projects list -q "outgoing" --json  # Search with JSON output
-```
-
 **Important:** The workspace may have hundreds of projects. Without `--search`/`-q`, only the first 100 are returned. Always use `--search` when looking for a specific project by name.
+
+```!
+asana projects list --help
+```
 
 ### List sections in a project
 
-```bash
-asana projects sections "Project Name"
-asana projects sections "Project Name" --json
+```!
+asana projects sections --help
 ```
 
 ### List tasks in a project
 
-```bash
-asana projects tasks             # Interactive project selection
-asana projects tasks --sections  # Group by section
+```!
+asana projects tasks --help
 ```
 
 ## Users
 
 ### List workspace users
 
-```bash
-asana users list                    # Shows name and email
-asana users list --with-id          # Also show user IDs
-asana users list --json             # JSON output with IDs, email, photo, workspaces
-asana users list --json | jq '.[] | select(.name | test("Tom"; "i"))'  # Find a user
-asana users list --json | jq '.[] | select(.email | test("@example.com"))'  # Find by email domain
+```!
+asana users list --help
 ```
 
 ## Teams
 
 ### List teams
 
-```bash
-asana teams list                    # Shows name, description, and ID
-asana teams list --json             # JSON with id, name, description, organization
+```!
+asana teams list --help
 ```
 
 ## Tags
 
 ### List tags
 
-```bash
-asana tags list                     # Shows name, color, and ID
-asana tags list --json              # JSON with id, name, notes, color, created_at, workspace, followers
+```!
+asana tags list --help
 ```
 
 ## Workspaces
 
 ### List workspaces
 
-```bash
-asana workspaces list               # Shows name, type (Organization/Workspace), and ID
-asana workspaces list --json        # JSON with id, name, is_organization, email_domains
+```!
+asana workspaces list --help
 ```
 
 ## Time Tracking
 
 ### Log time on a task
 
-```bash
-asana time create <task-id>         # Interactive
-asana time create <task-id> --json  # JSON output of created entry
+```!
+asana time create --help
 ```
 
 ### View time entries
 
-```bash
-asana time status <task-id>         # Shows duration, task, creator, date, description
-asana time status <task-id> --json  # JSON with id, duration, entered_on, created_by, task, description, approval/billable status
+```!
+asana time status --help
 ```
 
 ## Name Matching
@@ -308,7 +216,7 @@ When the user describes an action in natural language, translate it to the corre
 | "find Tom's tasks" / "search Tom's stuff" | `--assignee "Tom"` | Search resolves names to IDs automatically |
 | "find the outgoing project" / "which project is X in?" | `asana projects list -q "outgoing"` | Uses typeahead API — no 100-project ceiling |
 | "mark it done" / "complete this" | `--complete` | Update command only |
-| "move it to Project X" | Use `asana tasks move` | Don't delete and recreate |
+| "move it to Project X" | `asana tasks move <task-id>` | Don't delete and recreate |
 
 **Critical rule:** For `--due today` and `--due tomorrow`, ALWAYS pass the keyword literally. The CLI resolves it using `time.Now()` on the local machine, which is more reliable than the agent computing a date from session context (which may be stale or in a different timezone).
 
