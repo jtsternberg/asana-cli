@@ -120,7 +120,9 @@ func fetchUsers(client *asana.Client, workspaceID string, limit int) ([]*asana.U
 	}
 
 	users := make([]*asana.User, 0, initialCapacity)
-	options := &asana.Options{}
+	options := &asana.Options{
+		Fields: []string{"name", "email", "photo", "workspaces"},
+	}
 	if limit > 0 {
 		options.Limit = limit
 	}
@@ -151,13 +153,30 @@ func fetchUsers(client *asana.Client, workspaceID string, limit int) ([]*asana.U
 }
 
 func printUsersJSON(io *iostreams.IOStreams, users []*asana.User) error {
-	type jsonUser struct {
+	type jsonWorkspace struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	}
+	type jsonUser struct {
+		ID         string            `json:"id"`
+		Name       string            `json:"name"`
+		Email      string            `json:"email"`
+		Photo      map[string]string `json:"photo,omitempty"`
+		Workspaces []jsonWorkspace   `json:"workspaces,omitempty"`
+	}
 	out := make([]jsonUser, len(users))
 	for i, u := range users {
-		out[i] = jsonUser{ID: u.ID, Name: u.Name}
+		ju := jsonUser{ID: u.ID, Name: u.Name, Email: u.Email}
+		if u.Photo != nil {
+			ju.Photo = u.Photo
+		}
+		if len(u.Workspaces) > 0 {
+			ju.Workspaces = make([]jsonWorkspace, len(u.Workspaces))
+			for j, ws := range u.Workspaces {
+				ju.Workspaces[j] = jsonWorkspace{ID: ws.ID, Name: ws.Name}
+			}
+		}
+		out[i] = ju
 	}
 	enc := json.NewEncoder(io.Out)
 	enc.SetIndent("", "  ")
@@ -169,10 +188,15 @@ func printUsers(io *iostreams.IOStreams, workspaceName string, users []*asana.Us
 	io.Printf("\nUsers in workspace %s:\n\n", cs.Bold(workspaceName))
 
 	for i, user := range users {
+		emailPart := ""
+		if user.Email != "" {
+			emailPart = fmt.Sprintf(" <%s>", user.Email)
+		}
+
 		if showID {
-			io.Printf("%2d. %s (%s)\n", i+1, cs.Bold(user.Name), cs.Gray(user.ID))
+			io.Printf("%2d. %s%s (%s)\n", i+1, cs.Bold(user.Name), emailPart, cs.Gray(user.ID))
 		} else {
-			io.Printf("%2d. %s\n", i+1, cs.Bold(user.Name))
+			io.Printf("%2d. %s%s\n", i+1, cs.Bold(user.Name), emailPart)
 		}
 	}
 
