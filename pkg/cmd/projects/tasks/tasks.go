@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/timwehrle/asana/pkg/format"
+
 	"github.com/MakeNowJust/heredoc"
 	"golang.org/x/sync/errgroup"
 
@@ -305,9 +307,19 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 	return displayTasksBySection(opts, project, sectionsWithTasks)
 }
 
-type jsonTask struct {
+type jsonRef struct {
 	ID   string `json:"id"`
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
+}
+
+type jsonTask struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Assignee     *jsonRef `json:"assignee"`
+	DueOn        string   `json:"due_on,omitempty"`
+	Completed    *bool    `json:"completed"`
+	Tags         []jsonRef `json:"tags,omitempty"`
+	PermalinkURL string   `json:"permalink_url,omitempty"`
 }
 
 type jsonSectionTasks struct {
@@ -315,11 +327,44 @@ type jsonSectionTasks struct {
 	Tasks   []jsonTask `json:"tasks"`
 }
 
+func toJSONTask(t *asana.Task) jsonTask {
+	jt := jsonTask{
+		ID:           t.ID,
+		Name:         t.Name,
+		Completed:    t.Completed,
+		PermalinkURL: t.PermalinkURL,
+	}
+	if t.Assignee != nil {
+		jt.Assignee = &jsonRef{ID: t.Assignee.ID, Name: t.Assignee.Name}
+	}
+	if t.DueOn != nil {
+		jt.DueOn = time.Time(*t.DueOn).Format("2006-01-02")
+	}
+	for _, tag := range t.Tags {
+		jt.Tags = append(jt.Tags, jsonRef{ID: tag.ID, Name: tag.Name})
+	}
+	return jt
+}
+
+func taskStatus(task *asana.Task) string {
+	if task.Completed != nil && *task.Completed {
+		return "Completed"
+	}
+	return "Incomplete"
+}
+
+func taskAssigneeName(task *asana.Task) string {
+	if task.Assignee != nil && task.Assignee.Name != "" {
+		return task.Assignee.Name
+	}
+	return "-"
+}
+
 func displayTasks(opts *TasksOptions, project *asana.Project, tasks []*asana.Task) error {
 	if opts.JSON {
 		out := make([]jsonTask, len(tasks))
 		for i, t := range tasks {
-			out[i] = jsonTask{ID: t.ID, Name: t.Name}
+			out[i] = toJSONTask(t)
 		}
 		enc := json.NewEncoder(opts.IO.Out)
 		enc.SetIndent("", "  ")
@@ -337,7 +382,15 @@ func displayTasks(opts *TasksOptions, project *asana.Project, tasks []*asana.Tas
 	}
 
 	for i, task := range tasks {
-		fmt.Fprintf(out, "%d. %s (ID: %s)\n", i+1, cs.Bold(task.Name), task.ID)
+		due := format.Date(task.DueOn)
+		fmt.Fprintf(out, "%d. %s | %s | %s | %s | ID: %s\n",
+			i+1,
+			cs.Bold(task.Name),
+			taskAssigneeName(task),
+			due,
+			taskStatus(task),
+			task.ID,
+		)
 	}
 
 	return nil
@@ -353,7 +406,7 @@ func displayTasksBySection(
 		for i, st := range sections {
 			tasks := make([]jsonTask, len(st.tasks))
 			for j, t := range st.tasks {
-				tasks[j] = jsonTask{ID: t.ID, Name: t.Name}
+				tasks[j] = toJSONTask(t)
 			}
 			out[i] = jsonSectionTasks{Section: st.section.Name, Tasks: tasks}
 		}
@@ -380,7 +433,15 @@ func displayTasksBySection(
 		}
 
 		for i, task := range st.tasks {
-			fmt.Fprintf(out, "  %d. %s (ID: %s)\n", i+1, task.Name, task.ID)
+			due := format.Date(task.DueOn)
+			fmt.Fprintf(out, "  %d. %s | %s | %s | %s | ID: %s\n",
+				i+1,
+				task.Name,
+				taskAssigneeName(task),
+				due,
+				taskStatus(task),
+				task.ID,
+			)
 		}
 		fmt.Fprintln(out)
 	}

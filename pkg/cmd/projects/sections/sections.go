@@ -1,8 +1,10 @@
 package sections
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
@@ -18,6 +20,7 @@ type SectionsOptions struct {
 	Client func() (*asana.Client, error)
 
 	ProjectName string
+	JSON        bool
 }
 
 func NewCmdSections(f factory.Factory, runF func(*SectionsOptions) error) *cobra.Command {
@@ -45,12 +48,12 @@ func NewCmdSections(f factory.Factory, runF func(*SectionsOptions) error) *cobra
 		},
 	}
 
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
+
 	return cmd
 }
 
 func runSections(opts *SectionsOptions) error {
-	cs := opts.IO.ColorScheme()
-
 	cfg, err := opts.Config()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -101,13 +104,39 @@ func runSections(opts *SectionsOptions) error {
 		options.Offset = nextPage.Offset
 	}
 
+	return displaySections(opts, project, sections)
+}
+
+type jsonSection struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at,omitempty"`
+}
+
+func displaySections(opts *SectionsOptions, project *asana.Project, sections []*asana.Section) error {
+	if opts.JSON {
+		out := make([]jsonSection, len(sections))
+		for i, s := range sections {
+			js := jsonSection{ID: s.ID, Name: s.Name}
+			if s.CreatedAt != nil {
+				js.CreatedAt = s.CreatedAt.Format(time.RFC3339)
+			}
+			out[i] = js
+		}
+		enc := json.NewEncoder(opts.IO.Out)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
+	cs := opts.IO.ColorScheme()
+
 	fmt.Fprintf(opts.IO.Out, "\nSections in %s:\n\n", cs.Bold(project.Name))
 	if len(sections) == 0 {
 		fmt.Fprintln(opts.IO.Out, "No sections found")
 		return nil
 	}
 	for i, s := range sections {
-		fmt.Fprintf(opts.IO.Out, "  %d. %s\n", i+1, s.Name)
+		fmt.Fprintf(opts.IO.Out, "  %d. %s (ID: %s)\n", i+1, s.Name, s.ID)
 	}
 
 	return nil
