@@ -1,6 +1,7 @@
 package create
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/timwehrle/asana/pkg/convert"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
+	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
 type CreateOptions struct {
@@ -20,6 +22,7 @@ type CreateOptions struct {
 	Minutes int
 	DateStr string
 	Date    *asana.Date
+	JSON    bool
 }
 
 func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Command {
@@ -54,6 +57,7 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 
 	cmd.Flags().IntVarP(&opts.Minutes, "minutes", "m", 0, "Minutes to log (prompted if not set)")
 	cmd.Flags().StringVar(&opts.DateStr, "date", "", "Entry date (YYYY-MM-DD, defaults to today)")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	return cmd
 }
@@ -109,13 +113,67 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("failed to create time tracking entry: %w", err)
 	}
 
-	opts.IO.Printf("%s Logged %s to %q on %s\n",
-		opts.IO.ColorScheme().SuccessIcon,
+	return renderCreateResult(opts.IO, result, task.Name, opts.JSON)
+}
+
+func renderCreateResult(io *iostreams.IOStreams, result *asana.TimeTrackingEntry, taskName string, jsonOutput bool) error {
+	if jsonOutput {
+		return renderCreateJSON(io, result, taskName)
+	}
+
+	io.Printf("%s Logged %s to %q on %s\n",
+		io.ColorScheme().SuccessIcon,
 		format.Duration(result.DurationMinutes),
-		task.Name,
+		taskName,
 		format.Date(result.EnteredOn),
 	)
 	return nil
+}
+
+func renderCreateJSON(io *iostreams.IOStreams, entry *asana.TimeTrackingEntry, taskName string) error {
+	type jsonRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+	}
+	type jsonEntry struct {
+		ID              string   `json:"id"`
+		DurationMinutes int      `json:"duration_minutes"`
+		EnteredOn       string   `json:"entered_on,omitempty"`
+		CreatedBy       *jsonRef `json:"created_by"`
+		Task            *jsonRef `json:"task"`
+		Description     string   `json:"description,omitempty"`
+		ApprovalStatus  string   `json:"approval_status,omitempty"`
+		BillableStatus  string   `json:"billable_status,omitempty"`
+		CreatedAt       string   `json:"created_at,omitempty"`
+	}
+
+	je := &jsonEntry{
+		ID:              entry.ID,
+		DurationMinutes: entry.DurationMinutes,
+		Description:     entry.Description,
+		ApprovalStatus:  entry.ApprovalStatus,
+		BillableStatus:  entry.BillableStatus,
+	}
+	if entry.EnteredOn != nil {
+		je.EnteredOn = time.Time(*entry.EnteredOn).Format(time.DateOnly)
+	}
+	if entry.CreatedBy != nil {
+		je.CreatedBy = &jsonRef{ID: entry.CreatedBy.ID, Name: entry.CreatedBy.Name}
+	}
+	if entry.Task != nil {
+		je.Task = &jsonRef{ID: entry.Task.ID, Name: entry.Task.Name}
+	} else {
+		// The create response may not include the task object,
+		// but we know the task name from context.
+		je.Task = &jsonRef{Name: taskName}
+	}
+	if entry.CreatedAt != nil {
+		je.CreatedAt = entry.CreatedAt.Format(time.RFC3339)
+	}
+
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(je)
 }
 
 func promptDuration(opts *CreateOptions) (int, error) {

@@ -1,6 +1,7 @@
 package status
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -11,10 +12,13 @@ import (
 	"github.com/timwehrle/asana/pkg/cmdutils"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
+	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
 type StatusOptions struct {
 	cmdutils.BaseOptions
+
+	JSON bool
 }
 
 func NewCmdStatus(f factory.Factory, runF func(*StatusOptions) error) *cobra.Command {
@@ -37,6 +41,9 @@ func NewCmdStatus(f factory.Factory, runF func(*StatusOptions) error) *cobra.Com
 		Example: heredoc.Doc(`
 				# Show the tracked time of a selected task
 				$ asana timer status
+
+				# Output as JSON
+				$ asana timer status --json
 			`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if runF == nil {
@@ -45,6 +52,8 @@ func NewCmdStatus(f factory.Factory, runF func(*StatusOptions) error) *cobra.Com
 			return runF(opts)
 		},
 	}
+
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	return cmd
 }
@@ -57,7 +66,6 @@ type GroupedEntries struct {
 
 func runStatus(opts *StatusOptions) error {
 	io := opts.IO
-	cs := io.ColorScheme()
 
 	client, err := opts.Client()
 	if err != nil {
@@ -70,11 +78,91 @@ func runStatus(opts *StatusOptions) error {
 	}
 
 	entries, _, err := task.GetTimeTrackingEntries(client, &asana.Options{
-		Fields: []string{"created_by.name", "created_by.gid", "duration_minutes", "entered_on"},
+		Fields: []string{
+			"created_by.name", "created_by.gid",
+			"duration_minutes", "entered_on",
+			"task.name", "task.gid",
+			"description", "approval_status", "billable_status",
+			"created_at",
+		},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to get time tracking entries: %w", err)
 	}
+
+	return renderOutput(opts, io, task, entries)
+}
+
+func renderOutput(opts *StatusOptions, io *iostreams.IOStreams, task *asana.Task, entries []*asana.TimeTrackingEntry) error {
+	if opts.JSON {
+		return renderJSON(io, task, entries)
+	}
+	return renderText(io, task, entries)
+}
+
+func renderJSON(io *iostreams.IOStreams, task *asana.Task, entries []*asana.TimeTrackingEntry) error {
+	type jsonRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+	}
+	type jsonEntry struct {
+		ID              string   `json:"id"`
+		DurationMinutes int      `json:"duration_minutes"`
+		EnteredOn       string   `json:"entered_on,omitempty"`
+		CreatedBy       *jsonRef `json:"created_by"`
+		Task            *jsonRef `json:"task"`
+		Description     string   `json:"description,omitempty"`
+		ApprovalStatus  string   `json:"approval_status,omitempty"`
+		BillableStatus  string   `json:"billable_status,omitempty"`
+		CreatedAt       string   `json:"created_at,omitempty"`
+	}
+	type jsonOutput struct {
+		TaskName     string       `json:"task_name"`
+		TotalMinutes int          `json:"total_minutes"`
+		Entries      []*jsonEntry `json:"entries"`
+	}
+
+	total := 0
+	jsonEntries := make([]*jsonEntry, 0, len(entries))
+
+	for _, e := range entries {
+		total += e.DurationMinutes
+
+		je := &jsonEntry{
+			ID:              e.ID,
+			DurationMinutes: e.DurationMinutes,
+			Description:     e.Description,
+			ApprovalStatus:  e.ApprovalStatus,
+			BillableStatus:  e.BillableStatus,
+		}
+		if e.EnteredOn != nil {
+			je.EnteredOn = time.Time(*e.EnteredOn).Format(time.DateOnly)
+		}
+		if e.CreatedBy != nil {
+			je.CreatedBy = &jsonRef{ID: e.CreatedBy.ID, Name: e.CreatedBy.Name}
+		}
+		if e.Task != nil {
+			je.Task = &jsonRef{ID: e.Task.ID, Name: e.Task.Name}
+		}
+		if e.CreatedAt != nil {
+			je.CreatedAt = e.CreatedAt.Format(time.RFC3339)
+		}
+		jsonEntries = append(jsonEntries, je)
+	}
+
+	out := jsonOutput{
+		TaskName:     task.Name,
+		TotalMinutes: total,
+		Entries:      jsonEntries,
+	}
+
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
+func renderText(io *iostreams.IOStreams, task *asana.Task, entries []*asana.TimeTrackingEntry) error {
+	cs := io.ColorScheme()
 
 	if len(entries) == 0 {
 		io.Println("No time entries found for this task.")
@@ -90,10 +178,14 @@ func runStatus(opts *StatusOptions) error {
 	for _, g := range groups {
 		io.Printf("\n[%s]\n", g.Label)
 		for _, entry := range g.Entries {
-			io.Printf(" • %s — %s\n",
+			line := fmt.Sprintf(" • %s — %s",
 				entry.CreatedBy.Name,
 				cs.Bold(format.Duration(entry.DurationMinutes)),
 			)
+			if entry.Description != "" {
+				line += fmt.Sprintf(" — %s", entry.Description)
+			}
+			io.Printf("%s\n", line)
 		}
 	}
 
