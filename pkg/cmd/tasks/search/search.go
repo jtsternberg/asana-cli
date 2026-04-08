@@ -144,7 +144,6 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 
 func runSearch(opts *SearchOptions) error {
 	io := opts.IO
-	cs := io.ColorScheme()
 
 	cfg, err := opts.Config()
 	if err != nil {
@@ -196,8 +195,23 @@ func runSearch(opts *SearchOptions) error {
 	}
 
 	options := &asana.Options{
-		Fields: []string{"name", "due_on"},
-		Limit:  opts.Limit,
+		Fields: []string{
+			"name",
+			"due_on",
+			"assignee",
+			"completed",
+			"projects",
+			"tags",
+			"permalink_url",
+			"resource_subtype",
+			"notes",
+			"start_on",
+			"due_at",
+			"custom_fields",
+			"num_subtasks",
+			"parent",
+		},
+		Limit: opts.Limit,
 	}
 
 	tasks, err := workspace.SearchTasks(client, query, options)
@@ -220,24 +234,98 @@ func runSearch(opts *SearchOptions) error {
 		return nil
 	}
 
+	return renderResults(opts, tasks)
+}
+
+func renderResults(opts *SearchOptions, tasks []*asana.Task) error {
 	if opts.JSON {
-		type jsonTask struct {
-			ID    string `json:"id"`
-			Name  string `json:"name"`
-			DueOn string `json:"due_on,omitempty"`
-		}
-		out := make([]jsonTask, len(tasks))
-		for i, t := range tasks {
-			jt := jsonTask{ID: t.ID, Name: t.Name}
-			if t.DueOn != nil {
-				jt.DueOn = time.Time(*t.DueOn).Format("2006-01-02")
-			}
-			out[i] = jt
-		}
-		enc := json.NewEncoder(io.Out)
-		enc.SetIndent("", "  ")
-		return enc.Encode(out)
+		return renderJSON(opts, tasks)
 	}
+	return renderText(opts, tasks)
+}
+
+func renderJSON(opts *SearchOptions, tasks []*asana.Task) error {
+	io := opts.IO
+
+	type jsonRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+	}
+	type jsonCustomField struct {
+		ID           string  `json:"id"`
+		Name         string  `json:"name"`
+		DisplayValue *string `json:"display_value"`
+	}
+	type jsonTask struct {
+		ID              string             `json:"id"`
+		Name            string             `json:"name"`
+		ResourceSubtype string             `json:"resource_subtype,omitempty"`
+		Assignee        *jsonRef           `json:"assignee,omitempty"`
+		Completed       *bool              `json:"completed,omitempty"`
+		DueOn           string             `json:"due_on,omitempty"`
+		DueAt           string             `json:"due_at,omitempty"`
+		StartOn         string             `json:"start_on,omitempty"`
+		Notes           string             `json:"notes,omitempty"`
+		Parent          *jsonRef           `json:"parent,omitempty"`
+		Projects        []*jsonRef         `json:"projects,omitempty"`
+		Tags            []*jsonRef         `json:"tags,omitempty"`
+		CustomFields    []*jsonCustomField `json:"custom_fields,omitempty"`
+		NumSubtasks     int32              `json:"num_subtasks"`
+		PermalinkURL    string             `json:"permalink_url,omitempty"`
+	}
+
+	out := make([]jsonTask, len(tasks))
+	for i, t := range tasks {
+		jt := jsonTask{
+			ID:              t.ID,
+			Name:            t.Name,
+			ResourceSubtype: t.ResourceSubtype,
+			Completed:       t.Completed,
+			Notes:           t.Notes,
+			NumSubtasks:     t.NumSubtasks,
+			PermalinkURL:    t.PermalinkURL,
+		}
+
+		if t.Assignee != nil {
+			jt.Assignee = &jsonRef{ID: t.Assignee.ID, Name: t.Assignee.Name}
+		}
+		if t.Parent != nil {
+			jt.Parent = &jsonRef{ID: t.Parent.ID, Name: t.Parent.Name}
+		}
+		if t.DueOn != nil {
+			jt.DueOn = time.Time(*t.DueOn).Format("2006-01-02")
+		}
+		if t.DueAt != nil {
+			jt.DueAt = t.DueAt.Format(time.RFC3339)
+		}
+		if t.StartOn != nil {
+			jt.StartOn = time.Time(*t.StartOn).Format("2006-01-02")
+		}
+		for _, p := range t.Projects {
+			jt.Projects = append(jt.Projects, &jsonRef{ID: p.ID, Name: p.Name})
+		}
+		for _, tag := range t.Tags {
+			jt.Tags = append(jt.Tags, &jsonRef{ID: tag.ID, Name: tag.Name})
+		}
+		for _, cf := range t.CustomFields {
+			jt.CustomFields = append(jt.CustomFields, &jsonCustomField{
+				ID:           cf.ID,
+				Name:         cf.Name,
+				DisplayValue: cf.DisplayValue,
+			})
+		}
+
+		out[i] = jt
+	}
+
+	enc := json.NewEncoder(io.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
+func renderText(opts *SearchOptions, tasks []*asana.Task) error {
+	io := opts.IO
+	cs := io.ColorScheme()
 
 	if len(opts.Assignee) > 0 {
 		io.Printf("\nTasks assigned to %s:\n\n", cs.Bold(strings.Join(opts.Assignee, ", ")))
@@ -246,7 +334,34 @@ func runSearch(opts *SearchOptions) error {
 	}
 
 	for i, task := range tasks {
-		io.Printf("%2d. [%s] %s (ID: %s)\n", i+1, format.Date(task.DueOn), task.Name, task.ID)
+		assigneeName := "\u2014"
+		if task.Assignee != nil && task.Assignee.Name != "" {
+			assigneeName = task.Assignee.Name
+		}
+
+		status := "Incomplete"
+		if task.Completed != nil && *task.Completed {
+			status = "Done"
+		}
+
+		projectNames := make([]string, 0, len(task.Projects))
+		for _, p := range task.Projects {
+			projectNames = append(projectNames, p.Name)
+		}
+		projects := strings.Join(projectNames, ", ")
+		if projects == "" {
+			projects = "\u2014"
+		}
+
+		io.Printf("%2d. %s | %s | %s | %s | %s | ID: %s\n",
+			i+1,
+			cs.Bold(task.Name),
+			assigneeName,
+			format.Date(task.DueOn),
+			projects,
+			status,
+			task.ID,
+		)
 	}
 
 	return nil
