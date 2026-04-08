@@ -3,6 +3,7 @@ package list
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/timwehrle/asana/internal/config"
@@ -130,22 +131,7 @@ func listRun(opts *ListOptions) error {
 	sortTasks(tasks, opts.Sort)
 
 	if opts.JSON {
-		type jsonTask struct {
-			ID    string `json:"id"`
-			Name  string `json:"name"`
-			DueOn string `json:"due_on,omitempty"`
-		}
-		out := make([]jsonTask, len(tasks))
-		for i, t := range tasks {
-			jt := jsonTask{ID: t.ID, Name: t.Name}
-			if t.DueOn != nil {
-				jt.DueOn = time.Time(*t.DueOn).Format("2006-01-02")
-			}
-			out[i] = jt
-		}
-		enc := json.NewEncoder(opts.IO.Out)
-		enc.SetIndent("", "  ")
-		return enc.Encode(out)
+		return displayJSON(opts, tasks)
 	}
 
 	return printTasks(opts.IO, cfg.Username, tasks)
@@ -170,7 +156,14 @@ func fetchTasks(opts *ListOptions, workspaceID string, limit int) ([]*asana.Task
 
 	tasks := make([]*asana.Task, 0, initialCapacity)
 	options := &asana.Options{
-		Fields: []string{"name", "due_on", "created_at"},
+		Fields: []string{
+			"name", "due_on", "created_at", "assignee", "assignee.name",
+			"completed", "projects", "projects.name", "tags", "tags.name",
+			"permalink_url", "resource_subtype", "notes", "start_on",
+			"due_at", "custom_fields", "custom_fields.name",
+			"custom_fields.display_value", "num_subtasks", "parent",
+			"parent.name",
+		},
 		Limit:  limit,
 	}
 
@@ -219,16 +212,116 @@ func printEmptyMessage(io *iostreams.IOStreams) error {
 	return nil
 }
 
+func displayJSON(opts *ListOptions, tasks []*asana.Task) error {
+	type jsonRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name,omitempty"`
+	}
+	type jsonCustomField struct {
+		ID           string  `json:"id"`
+		Name         string  `json:"name"`
+		DisplayValue *string `json:"display_value"`
+	}
+	type jsonTask struct {
+		ID              string             `json:"id"`
+		Name            string             `json:"name"`
+		ResourceSubtype string             `json:"resource_subtype,omitempty"`
+		Assignee        *jsonRef           `json:"assignee"`
+		Completed       *bool              `json:"completed"`
+		DueOn           string             `json:"due_on,omitempty"`
+		DueAt           string             `json:"due_at,omitempty"`
+		StartOn         string             `json:"start_on,omitempty"`
+		Notes           string             `json:"notes,omitempty"`
+		Parent          *jsonRef           `json:"parent,omitempty"`
+		Projects        []*jsonRef         `json:"projects,omitempty"`
+		Tags            []*jsonRef         `json:"tags,omitempty"`
+		CustomFields    []*jsonCustomField `json:"custom_fields,omitempty"`
+		NumSubtasks     int32              `json:"num_subtasks"`
+		PermalinkURL    string             `json:"permalink_url,omitempty"`
+	}
+
+	out := make([]jsonTask, len(tasks))
+	for i, t := range tasks {
+		jt := jsonTask{
+			ID:              t.ID,
+			Name:            t.Name,
+			ResourceSubtype: t.ResourceSubtype,
+			Completed:       t.Completed,
+			Notes:           t.Notes,
+			NumSubtasks:     t.NumSubtasks,
+			PermalinkURL:    t.PermalinkURL,
+		}
+
+		if t.Assignee != nil {
+			jt.Assignee = &jsonRef{ID: t.Assignee.ID, Name: t.Assignee.Name}
+		}
+		if t.Parent != nil {
+			jt.Parent = &jsonRef{ID: t.Parent.ID, Name: t.Parent.Name}
+		}
+		if t.DueOn != nil {
+			jt.DueOn = time.Time(*t.DueOn).Format("2006-01-02")
+		}
+		if t.DueAt != nil {
+			jt.DueAt = t.DueAt.Format(time.RFC3339)
+		}
+		if t.StartOn != nil {
+			jt.StartOn = time.Time(*t.StartOn).Format("2006-01-02")
+		}
+		for _, p := range t.Projects {
+			jt.Projects = append(jt.Projects, &jsonRef{ID: p.ID, Name: p.Name})
+		}
+		for _, tag := range t.Tags {
+			jt.Tags = append(jt.Tags, &jsonRef{ID: tag.ID, Name: tag.Name})
+		}
+		for _, cf := range t.CustomFields {
+			jt.CustomFields = append(jt.CustomFields, &jsonCustomField{
+				ID:           cf.ID,
+				Name:         cf.Name,
+				DisplayValue: cf.DisplayValue,
+			})
+		}
+		out[i] = jt
+	}
+
+	enc := json.NewEncoder(opts.IO.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
 func printTasks(io *iostreams.IOStreams, username string, tasks []*asana.Task) error {
 	cs := io.ColorScheme()
 
 	fmt.Fprintf(io.Out, "\nTasks for %s:\n\n", cs.Bold(username))
 
 	for i, task := range tasks {
-		fmt.Fprintf(io.Out, "%d. [%s] %s (ID: %s)\n",
+		assignee := "Unassigned"
+		if task.Assignee != nil && task.Assignee.Name != "" {
+			assignee = task.Assignee.Name
+		}
+
+		due := format.Date(task.DueOn)
+
+		projects := "-"
+		if len(task.Projects) > 0 {
+			names := make([]string, len(task.Projects))
+			for j, p := range task.Projects {
+				names[j] = p.Name
+			}
+			projects = strings.Join(names, ", ")
+		}
+
+		status := "Incomplete"
+		if task.Completed != nil && *task.Completed {
+			status = "Completed"
+		}
+
+		fmt.Fprintf(io.Out, "%d. %s | %s | %s | %s | %s | ID: %s\n",
 			i+1,
-			format.Date(task.DueOn),
 			cs.Bold(task.Name),
+			assignee,
+			due,
+			projects,
+			status,
 			task.ID,
 		)
 	}
