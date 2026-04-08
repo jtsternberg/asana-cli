@@ -102,7 +102,10 @@ asana tasks delete <task-id>
 
 ```bash
 asana tasks view <task-id>
+asana tasks view <task-id> --json
 ```
+
+The view command displays all task fields: assignee, completion status, dates (due, start, created, modified, completed), parent task, custom fields, dependencies, dependents, followers, memberships, subtask count, and more.
 
 Without a task ID, falls back to interactive selection.
 
@@ -170,23 +173,38 @@ asana tasks search --is-blocked --due-on-after 2026-03-09 --due-on-before 2026-0
 
 ## Structured Output
 
-All task commands (`list`, `search`, `view`) support `--json` for machine-readable output. Pipe the output to `jq` for filtering and transformation:
+Most commands support `--json` for machine-readable output:
+- **Tasks:** `list`, `search`, `view`
+- **Projects:** `list`, `sections`, `tasks`
+- **Users:** `list`
+- **Teams:** `list`
+- **Tags:** `list`
+- **Workspaces:** `list`
+- **Time:** `status`, `create`
+
+JSON output includes all available fields from the API (assignee, completion status, custom fields, dates, etc.). Pipe to `jq` for filtering:
 
 ```bash
 # Get all task IDs from search results
 asana tasks search --query "deploy" --json | jq '.[].id'
 
-# Get task names and IDs
-asana tasks list --json | jq '.[] | {id, name}'
+# Get task names and assignees
+asana tasks list --json | jq '.[] | {id, name, assignee: .assignee.name}'
+
+# Find incomplete tasks
+asana tasks list --json | jq '.[] | select(.completed == false)'
+
+# Get tasks with specific custom field values
+asana tasks view <task-id> --json | jq '.custom_fields[] | {name, display_value}'
 
 # Filter tasks by name pattern (case-insensitive)
 asana tasks list --json | jq '.[] | select(.name | test("keyword"; "i"))'
 
-# Extract a single field from a specific task
-asana tasks view <task-id> --json | jq '.name'
+# Find a user by email
+asana users list --json | jq '.[] | select(.email | test("tom"; "i"))'
 ```
 
-Task IDs are also shown in the default text output of `list` and `search` (e.g., `(ID: 1234567890)`).
+Text output also includes rich data: task list/search show assignee, due date, projects, and completion status alongside the task name and ID.
 
 ## Project Management
 
@@ -206,6 +224,7 @@ asana projects list -q "outgoing" --json  # Search with JSON output
 
 ```bash
 asana projects sections "Project Name"
+asana projects sections "Project Name" --json
 ```
 
 ### List tasks in a project
@@ -220,10 +239,54 @@ asana projects tasks --sections  # Group by section
 ### List workspace users
 
 ```bash
-asana users list                    # Human-readable
-asana users list --with-id          # Show user IDs
-asana users list --json             # JSON output with IDs
+asana users list                    # Shows name and email
+asana users list --with-id          # Also show user IDs
+asana users list --json             # JSON output with IDs, email, photo, workspaces
 asana users list --json | jq '.[] | select(.name | test("Tom"; "i"))'  # Find a user
+asana users list --json | jq '.[] | select(.email | test("@example.com"))'  # Find by email domain
+```
+
+## Teams
+
+### List teams
+
+```bash
+asana teams list                    # Shows name, description, and ID
+asana teams list --json             # JSON with id, name, description, organization
+```
+
+## Tags
+
+### List tags
+
+```bash
+asana tags list                     # Shows name, color, and ID
+asana tags list --json              # JSON with id, name, notes, color, created_at, workspace, followers
+```
+
+## Workspaces
+
+### List workspaces
+
+```bash
+asana workspaces list               # Shows name, type (Organization/Workspace), and ID
+asana workspaces list --json        # JSON with id, name, is_organization, email_domains
+```
+
+## Time Tracking
+
+### Log time on a task
+
+```bash
+asana time create <task-id>         # Interactive
+asana time create <task-id> --json  # JSON output of created entry
+```
+
+### View time entries
+
+```bash
+asana time status <task-id>         # Shows duration, task, creator, date, description
+asana time status <task-id> --json  # JSON with id, duration, entered_on, created_by, task, description, approval/billable status
 ```
 
 ## Name Matching
