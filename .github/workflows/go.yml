@@ -34,5 +34,8 @@ jobs:
       - name: Check Formatting
         run: test -z "$(gofmt -s -l -e .)"
 
+      - name: Check Claude plugin version lockstep
+        run: make check/plugin-version
+
       - name: Running Tests
         run: make test

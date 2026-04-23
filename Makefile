@@ -51,8 +51,16 @@ audit: ## Audit code
 	$(GOVET) ./...
 	$(GORUN) $(VULN) ./...
 
+.PHONY: check/plugin-version
+check/plugin-version: ## Verify plugin version matches between marketplace.json and plugin.json
+	@./scripts/plugin-version.sh check
+
+.PHONY: sync/plugin-version
+sync/plugin-version: ## Copy plugin.json version into marketplace.json
+	@./scripts/plugin-version.sh sync
+
 .PHONY: release
-release: ## Run GoReleaser
+release: check/plugin-version ## Run GoReleaser
 	@echo "Releasing..."
 	goreleaser release --clean
 
