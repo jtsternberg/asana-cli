@@ -23,7 +23,10 @@ This document specifies the minimum set of changes to make the CLI safe and pred
 - No `tasks bulk ...` subcommand tree. Agent/shell loops with improved single-task commands handle multi-item operations; partial-apply risk is handled by reading per-call output and retrying.
 - No markdown-to-task converter. Too workflow-specific for a general CLI.
 - No YAML spec format. No spec files at all.
-- No changes to auth, time tracking, workspaces, teams, tags, or the interactive prompter.
+
+**Scope of the strict-resolution retrofit:** every CLI surface that resolves a user / project / section / workspace by name or email. This includes `auth login --workspace` (currently case-insensitive exact via `strings.EqualFold`, but lacks ambiguity detection — same class of bug, lower impact, retrofit for consistency).
+
+**Confirmed unaffected (audit found no name-resolution code paths):** `tasks list / view / delete` (ID-only), `auth status / logout`, `config get / set` (interactive Select prompt only), `time create / status / delete` (interactive `SelectTask` only), `tags list`, `tags tasks` (`--id` only), `teams list`, `workspaces list`, `users list`, `upgrade`, the interactive prompter library.
 
 ---
 
@@ -53,10 +56,11 @@ type Resolver struct {
     client      *asana.Client
     workspaceID string
     // lazy, per-resolver caches; one fetch per type per resolver lifetime
-    users    []*asana.User
-    projects []*asana.Project
-    sections map[string][]*asana.Section // keyed by project ID
-    me       *asana.User
+    users      []*asana.User
+    projects   []*asana.Project
+    sections   map[string][]*asana.Section // keyed by project ID
+    workspaces []*asana.Workspace          // for auth login --workspace flow
+    me         *asana.User
 }
 
 func New(client *asana.Client, workspaceID string) *Resolver
@@ -66,6 +70,7 @@ func (r *Resolver) User(ref UserRef) (*asana.User, error)
 func (r *Resolver) Users(refs []UserRef) ([]*asana.User, error) // atomic: all-or-none
 func (r *Resolver) Project(ref Ref) (*asana.Project, error)
 func (r *Resolver) Section(projectID string, ref Ref) (*asana.Section, error)
+func (r *Resolver) Workspace(ref Ref) (*asana.Workspace, error)
 
 type Ref struct {
     Value string
@@ -145,6 +150,7 @@ Benefit beyond safety: a single `tasks create -a X -p Y -s Z -f "a,b,c"` invocat
 | `projects tasks <project>` | 1 inline loop | `resolver.Project` |
 | `projects sections <project>` | 1 inline loop | `resolver.Project` |
 | `tasks audit` (new) | n/a | `resolver.Project`, `resolver.Section` |
+| `auth login --workspace` | `strings.EqualFold` (no ambiguity check) | `resolver.Workspace` |
 
 Factory gains a new provider: `f.Resolver() (*resolve.Resolver, error)`. Construction is cheap. Shared across helpers within one command run.
 
@@ -215,9 +221,20 @@ No flag changes expected — these operate on task IDs directly or interactive s
 
 Positional project argument routes through resolver. Auto-detect on digits; strict otherwise. No new explicit flag — positional args stay minimal. Breaking: partial-match on project name stops working.
 
+### `auth login --workspace`
+
+Existing behavior (line 152 of `pkg/cmd/auth/login/login.go`): `if ws.ID == opts.Workspace || strings.EqualFold(ws.Name, opts.Workspace)`. Already case-insensitive exact (no partial match), but silently picks the first match if two workspaces share an exact name. Retrofit via the resolver:
+
+- Add a `Workspace(ref Ref) (*asana.Workspace, error)` method to the resolver, mirroring the others. Auto-detect on digits → ID, else name.
+- New flags: `--workspace-id <id>` explicit mirror.
+- Strict resolution: case-insensitive exact match; multi-match → `WORKSPACE_AMBIGUOUS`; zero match → `WORKSPACE_NOT_FOUND` with "did you mean" suggestions.
+- Add `WORKSPACE_AMBIGUOUS` and `WORKSPACE_NOT_FOUND` to the error code enum (Section 5).
+
+Low real-world impact (workspace dupes are rare), but worth doing for one coherent safety model across the CLI.
+
 ### Time tracking (`time create`, `time status`)
 
-Uses interactive `cmdutils.SelectTask`. Implementer spot-check: confirm no non-interactive name-by-flag path exists. If it does, apply the resolver treatment.
+Uses interactive `cmdutils.SelectTask`. Audit confirmed no non-interactive name-by-flag path. No resolver wiring needed.
 
 ### API layer additions
 
@@ -366,6 +383,8 @@ Cross-cutting. Every strict-mode failure across every command produces the same 
 | `PROJECT_NOT_FOUND` | Name/ID resolves to 0 projects |
 | `SECTION_AMBIGUOUS` | Name resolves to 2+ sections in the project |
 | `SECTION_NOT_FOUND` | Name/ID resolves to 0 sections in the project |
+| `WORKSPACE_AMBIGUOUS` | Name resolves to 2+ workspaces (`auth login --workspace`) |
+| `WORKSPACE_NOT_FOUND` | Name/ID resolves to 0 workspaces |
 | `TASK_NOT_FOUND` | `--task-ids` includes an ID that 404s |
 | `INVALID_EMAIL` | `--assignee-email` / `--followers-email` given a value missing `@` |
 | `INVALID_ID` | `--*-id` given a non-digit value |
@@ -540,7 +559,7 @@ done
 - Interactive prompts when flags are omitted
 - JSON output structure for success cases
 - Auth flow, keyring storage, config locations
-- Untouched commands: auth, config, time, teams, tags, workspaces
+- Untouched commands (no name-resolution paths): `auth status / logout`, `config`, `time`, `teams list`, `tags`, `workspaces list`, `users list`, `upgrade`. (`auth login --workspace` IS touched — see Section 3.)
 
 ### Deprecation posture
 
@@ -583,6 +602,8 @@ TDD is the house rule (per `AGENTS.md`). Every new flag, error path, and resolve
 | `User` called twice on same resolver | Underlying `AllUsers` fetched once |
 | `Project({Value: "rocks"})` with `Rocks` + `ROCKS` | `PROJECT_AMBIGUOUS` with both |
 | `Section` before `Project` | Either order works (independent caches) |
+| `Workspace({Value: "Acme"})` with two exact-name workspaces | `WORKSPACE_AMBIGUOUS` with both candidates |
+| `Workspace({Value: "Acme"})` with single match | Returns workspace |
 | `Users([]UserRef{...})` with one failing ref | Aggregate error; no partial resolution returned |
 
 ### Command integration tests (new or updated)
@@ -600,6 +621,7 @@ TDD is the house rule (per `AGENTS.md`). Every new flag, error path, and resolve
 - `tasks audit --task-ids 1,2,3` with task 2 returning 404 → hybrid output, exit 3
 - `tasks move -p "ambiguous"` → `PROJECT_AMBIGUOUS`, exit 3, no move
 - `tasks search --assignee "Alex"` with two Alexes → `USER_AMBIGUOUS`, exit 3
+- `auth login --workspace "Acme"` with two exact-name workspaces → `WORKSPACE_AMBIGUOUS`, exit 3, no login persisted
 
 ### Golden-file tests for error envelopes
 
