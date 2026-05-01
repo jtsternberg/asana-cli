@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/timwehrle/asana/internal/api/asana"
 	"github.com/timwehrle/asana/internal/config"
+	"github.com/timwehrle/asana/pkg/cmd/projects/sections/create"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
@@ -49,6 +50,8 @@ func NewCmdSections(f factory.Factory, runF func(*SectionsOptions) error) *cobra
 	}
 
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
+
+	cmd.AddCommand(create.NewCmdCreate(f, nil))
 
 	return cmd
 }

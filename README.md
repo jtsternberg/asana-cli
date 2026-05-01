@@ -6,7 +6,7 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 [![Go Report Card](https://goreportcard.com/badge/github.com/timwehrle/asana)](https://goreportcard.com/report/github.com/timwehrle/asana)
 
 > [!NOTE]
-> This is a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana) with extended features: non-interactive CLI support, `--json` output, `tasks delete`, `projects sections`, fuzzy name matching, self-update command, and a Claude Code plugin.
+> This is a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana) with extended features: non-interactive CLI support, `--json` output, `tasks delete`, `projects sections` (list + create), fuzzy name matching, self-update command, and a Claude Code plugin.
 
 ## Features
 
@@ -174,6 +174,7 @@ asana time delete                           # Delete a time entry
 asana projects list                    # List all projects
 asana projects list -l 25 --sort desc  # List with options
 asana projects sections "Project Name" # List sections in a project
+asana projects sections create "Project Name" "Section Name"  # Create a new section
 asana projects tasks                   # List tasks in a project
 asana projects tasks --sections        # Group by section
 ```

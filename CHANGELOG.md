@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`projects sections create` subcommand** — create a new section in a project from the CLI: `asana projects sections create "Project Name" "Section Name"` (supports `--json` for scripting and agent use)
+
 ## [3.1.0] - 2026-04-08
 
 ### Added

@@ -145,6 +145,12 @@ asana projects list --help
 asana projects sections --help
 ```
 
+### Create a section in a project
+
+```!
+asana projects sections create --help
+```
+
 ### List tasks in a project
 
 ```!
