@@ -1,10 +1,15 @@
 # Changelog
 
-## [Unreleased]
+## [3.2.0] - 2026-05-03
 
 ### Added
 
 - **`projects sections create` subcommand** — create a new section in a project from the CLI: `asana projects sections create "Project Name" "Section Name"` (supports `--json` for scripting and agent use)
+
+### Changed
+
+- **CI** — keep Claude plugin marketplace and `plugin.json` versions in lockstep
+- **Docs** — added v4 safety & workflow design spec; widened v4 retrofit scope to include `auth login --workspace`
 
 ## [3.1.0] - 2026-04-08
 
