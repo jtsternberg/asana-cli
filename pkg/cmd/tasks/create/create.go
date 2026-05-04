@@ -192,6 +192,25 @@ func runCreate(opts *CreateOptions) error {
 	return nil
 }
 
+// resolveMeUser resolves the literal "me" token to the authenticated user
+// within the workspace user list. Used by both --assignee and --followers.
+func resolveMeUser(cfg *config.Config, client *asana.Client, users []*asana.User) (*asana.User, error) {
+	userID := cfg.UserID
+	if userID == "" {
+		currentUser, err := client.CurrentUser()
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch current user: %w", err)
+		}
+		userID = currentUser.ID
+	}
+	for _, user := range users {
+		if user.ID == userID {
+			return user, nil
+		}
+	}
+	return nil, fmt.Errorf("could not find current user in workspace")
+}
+
 func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, client *asana.Client) (*asana.User, error) {
 	ws := &asana.Workspace{ID: cfg.Workspace.ID}
 	users, _, err := ws.Users(client)
@@ -201,25 +220,7 @@ func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, clien
 
 	if opts.Assignee != "" {
 		if strings.ToLower(opts.Assignee) == "me" {
-			if cfg.UserID == "" {
-				currentUser, err := client.CurrentUser()
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch current user: %w", err)
-				}
-				for _, user := range users {
-					if user.ID == currentUser.ID {
-						return user, nil
-					}
-				}
-				return nil, fmt.Errorf("could not find current user in workspace")
-			} else {
-				for _, user := range users {
-					if user.ID == cfg.UserID {
-						return user, nil
-					}
-				}
-				return nil, fmt.Errorf("could not find current user in workspace")
-			}
+			return resolveMeUser(cfg, client, users)
 		}
 
 		// Try exact name match
@@ -419,8 +420,21 @@ func resolveFollowers(opts *CreateOptions, cfg *config.Config, client *asana.Cli
 			continue
 		}
 
-		found := false
 		fLower := strings.ToLower(f)
+
+		// Reserve "me" as the authenticated user, matching --assignee me.
+		// Without this, "me" would substring-match into names like "Angie Meeker".
+		if fLower == "me" {
+			meUser, err := resolveMeUser(cfg, client, users)
+			if err != nil {
+				return nil, nil, err
+			}
+			ids = append(ids, meUser.ID)
+			names = append(names, meUser.Name)
+			continue
+		}
+
+		found := false
 
 		// Exact name match
 		for _, u := range users {
