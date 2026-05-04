@@ -111,7 +111,9 @@ Explicit flags (`--assignee-email`, `--assignee-id`, `--project-id`, `--section-
 
 ### `me` shorthand
 
-`User(UserRef{Value: "me"})` resolves via `client.CurrentUser()` on first call, caches the result for the resolver's lifetime. `me` is preserved as user-only shorthand and bypasses normal name/email/ID routing.
+`User(UserRef{Value: "me"})` short-circuits BEFORE the auto-detect / name path: it resolves via `client.CurrentUser()` (or cached `cfg.UserID`) on first call and caches for the resolver's lifetime. `me` is user-only shorthand. The short-circuit applies inside `Users([]UserRef)` too, so a follower list like `[]UserRef{{"alex@example.com"}, {"me"}}` resolves both correctly without `me` ever entering the name-match path.
+
+This explicitly preserves and supersedes the fix in PR #13 (v3.x): in v3 the `resolveMeUser` helper short-circuits `me` before fuzzy matching in `tasks create`. In v4, the resolver owns this behavior centrally, the helper goes away, and the same protection extends to `tasks update` — which v3 PR #13 doesn't patch (see Section 7 test row and the "Related PRs" appendix).
 
 ### Error type
 
@@ -599,6 +601,8 @@ TDD is the house rule (per `AGENTS.md`). Every new flag, error path, and resolve
 | `User({Value: "123456"})` auto-detected ID, no match | `USER_NOT_FOUND` |
 | `User({Value: "Alex", Hint: TypeEmail})` | `INVALID_EMAIL` (pre-lookup) |
 | `User({Value: "me"})` | Resolves to `CurrentUser()`, caches |
+| `Users([]UserRef{{"me"}, {"alex@example.com"}})` with workspace containing `Angie Meeker` and `Tom Mendez` | `me` resolves to authenticated user; "Angie Meeker" / "Tom Mendez" are NOT matched (regression guard for asana-cli-2z7 / PR #13) |
+| `User({Value: "me"})` when `cfg.UserID` matches a user named "Me User" exactly | Returns authenticated user (the `me` shorthand wins over an exact-name collision) |
 | `User` called twice on same resolver | Underlying `AllUsers` fetched once |
 | `Project({Value: "rocks"})` with `Rocks` + `ROCKS` | `PROJECT_AMBIGUOUS` with both |
 | `Section` before `Project` | Either order works (independent caches) |
@@ -826,3 +830,20 @@ The full recipe for the flow that fumbled. Sections:
 - `asana-cli-93g` (open, P3) — concurrent section-task fetches in `listTasksWithSections`. Relevant to Section 4 (audit perf); share a bounded-concurrency helper.
 - `asana-cli-4t6` (in_progress) — delete orphan plugin cache at `~/.claude/plugins/cache/asana-cli/`. Housekeeping from design.
 - `asana-cli-0a9` (in_progress) — keep `marketplace.json` version in lockstep with `plugin.json`. Housekeeping from design.
+- `asana-cli-2z7` (in_progress, P1) — `-f/--followers 'me'` substrings into other users in `tasks create`. Fixed in v3 by PR #13 (band-aid `resolveMeUser` helper). Subsumed by v4 resolver — the helper goes away, behavior preserved centrally.
+
+## Related PRs
+
+### PR #13 — `fix(tasks create): reserve 'me' token in --followers/--cc`
+
+**Status when v4 design was written:** open, scoped to `pkg/cmd/tasks/create/create.go`.
+
+**What it does in v3:** introduces `resolveMeUser(cfg, client, users)` and short-circuits the `me` token in `tasks create`'s `--followers` / `--cc` parsing before the substring-match chain runs. Adds a translation-table row to `claude-plugin/skills/using-asana-cli/SKILL.md`. Adds two regression tests (`TestResolveMeUser_FromCachedUserID`, `TestResolveMeUser_NotInWorkspace`).
+
+**What v4 does to it:**
+- The `resolveMeUser` helper is **removed**; the resolver's `User(UserRef{Value: "me"})` owns the same behavior centrally and applies it inside `Users([]UserRef)` too.
+- The skill translation-table entry is **preserved** as still-valuable natural-language → CLI mapping.
+- The two regression tests are **superseded** by the resolver's own `me` test rows (Section 7) — they can be removed or migrated to the resolver test file when v4 lands.
+- The protection extends to `tasks update --followers me`, which PR #13 does not patch — v4 catches it via the resolver wiring (Section 2 wiring table).
+
+**Known v3.x gap (until v4 ships):** `tasks update <id> --followers me` retains the substring-match bug because PR #13 only patches `create.go`. Recommend either expanding PR #13 or filing a separate v3.x patch — see beads `asana-cli-2z7` notes for status.
