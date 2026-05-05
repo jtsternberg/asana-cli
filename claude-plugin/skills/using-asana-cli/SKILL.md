@@ -214,6 +214,7 @@ When the user describes an action in natural language, translate it to the corre
 | User says | CLI equivalent | Notes |
 |-----------|---------------|-------|
 | "CC Chris on this" / "add Chris to the task" / "loop in Chris" | `--followers "Chris"` or `--cc "Chris"` | `--cc` is a hidden alias for `--followers` |
+| "CC me" / "add me as a follower" / "loop me in" | `--followers me` or `--cc me` | The literal token `me` resolves to the authenticated user (same as `--assignee me`) |
 | "due today" / "this is due today" | `--due today` | **NEVER** pre-resolve to a date string — pass the literal keyword |
 | "due tomorrow" | `--due tomorrow` | Same rule: pass the keyword, not a computed date |
 | "due next Friday" | `--due 2026-04-03` | CLI only supports `today`, `tomorrow`, or `YYYY-MM-DD` — you must compute this one |
