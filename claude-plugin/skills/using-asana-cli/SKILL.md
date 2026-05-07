@@ -1,8 +1,8 @@
 ---
 name: asana-task-manager
 description: Manages Asana tasks, Asana projects, and Asana workspace users via the `asana` CLI. Use when the user mentions Asana, asks to create/update/move/delete tasks, search projects, or manage workspace users.
-argument-hint: [create|update|move|delete|search|list] [natural language description]
-allowed-tools: Bash(asana *), Bash(which asana), Bash(security find-generic-password *)
+argument-hint: '[create|update|move|delete|search|list] [natural language description]'
+allowed-tools: 'Bash(asana *), Bash(which asana), Bash(security find-generic-password *)'
 ---
 
 # Asana CLI
