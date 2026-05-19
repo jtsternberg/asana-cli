@@ -69,6 +69,41 @@ func TestRunCreate_ConfigError(t *testing.T) {
 	}
 }
 
+// makeUsers returns a workspace user slice including a name with "me" as a substring,
+// to exercise the regression where -f "me" would substring-match into "Angie Meeker".
+func makeUsers() []*asana.User {
+	me := &asana.User{ID: "U_ME"}
+	me.Name = "Justin Sternberg"
+	angie := &asana.User{ID: "U_ANGIE"}
+	angie.Name = "Angie Meeker"
+	tom := &asana.User{ID: "U_TOM"}
+	tom.Name = "Tom Mendez"
+	return []*asana.User{angie, tom, me}
+}
+
+func TestResolveMeUser_FromCachedUserID(t *testing.T) {
+	cfg := &config.Config{UserID: "U_ME"}
+	users := makeUsers()
+
+	got, err := resolveMeUser(cfg, nil, users)
+	if err != nil {
+		t.Fatalf("resolveMeUser error: %v", err)
+	}
+	if got.ID != "U_ME" {
+		t.Errorf("ID = %q; want U_ME (got user %q) — 'me' should never substring-match into other names", got.ID, got.Name)
+	}
+}
+
+func TestResolveMeUser_NotInWorkspace(t *testing.T) {
+	cfg := &config.Config{UserID: "U_OTHER"}
+	users := makeUsers()
+
+	_, err := resolveMeUser(cfg, nil, users)
+	if err == nil || !strings.Contains(err.Error(), "could not find current user") {
+		t.Errorf("expected not-found error, got: %v", err)
+	}
+}
+
 func TestNewCmdCreate_CCAlias(t *testing.T) {
 	f, _, _ := factory.NewTestFactory()
 
