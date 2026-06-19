@@ -22,7 +22,7 @@ Create a new release. Version can be provided as $ARGUMENTS, or auto-detected fr
 2. **Run pre-release checks**:
    - `go build ./...` — must compile
    - `go test ./...` — all tests must pass
-   - Verify git status is clean (all changes committed)
+   - Verify git status is clean (all changes committed). GoReleaser refuses to run on a dirty tree. If unrelated WIP files are present that shouldn't be in the release, stash them now (`git stash push -u -m "release: park WIP" <paths>`) and restore with `git stash pop` after step 8.
    - If any check fails, stop and report the failure
 
 3. **Generate changelog content**:
@@ -42,8 +42,9 @@ Create a new release. Version can be provided as $ARGUMENTS, or auto-detected fr
    ```bash
    git add CHANGELOG.md claude-plugin/.claude-plugin/plugin.json
    git commit -m "Prepare release vX.Y.Z"
-   git tag vX.Y.Z
+   git tag -a vX.Y.Z -m "Release vX.Y.Z"
    ```
+   - Use an **annotated** tag (`-a -m`). This repo's git config rejects a bare `git tag vX.Y.Z` with `fatal: no tag message?`.
 
 7. **Push**:
    ```bash
@@ -52,12 +53,19 @@ Create a new release. Version can be provided as $ARGUMENTS, or auto-detected fr
 
 8. **Run GoReleaser**:
    - Check if goreleaser is installed: `which goreleaser || brew install goreleaser`
+   - **Run it in the FOREGROUND with network access — never sandboxed or backgrounded.** The asset-upload stage needs to reach `uploads.github.com`; in a sandbox DNS fails with `no such host`, GoReleaser spins ~27 min retrying, then fails (the binaries still build fine into `dist/`). In Claude Code, this means `dangerouslyDisableSandbox: true`.
+   - **Do NOT pipe the command to `tail`/`head`** (e.g. `goreleaser ... | tail -40`). The pipeline exit code is `tail`'s `0`, which masks GoReleaser's real failure. Run it unpiped and read the output; a failure ends with `⨯ release failed`.
    - GoReleaser needs a GitHub token. Use `gh auth token` to get one:
    ```bash
    GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
    ```
-   - This builds cross-platform binaries, creates archives, and publishes a GitHub release
-   - If goreleaser fails, fall back to manual GitHub release:
+   - This builds cross-platform binaries, creates archives, and publishes a GitHub release.
+   - **If the upload stage failed** (DNS or transient), the release was created as a **draft** with no assets, but the binaries are built in `dist/`. Recover without rebuilding:
+     ```bash
+     gh release upload vX.Y.Z dist/*.tar.gz dist/*.deb dist/checksums.txt --clobber
+     gh release edit vX.Y.Z --draft=false --notes-file <changelog-notes.md>
+     ```
+   - If goreleaser fails entirely (no build), fall back to manual GitHub release:
      ```bash
      gh release create vX.Y.Z --title "vX.Y.Z" --notes "$CHANGELOG_CONTENT"
      ```
