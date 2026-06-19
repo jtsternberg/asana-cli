@@ -1,10 +1,15 @@
 # Changelog
 
-## [Unreleased]
+## [3.3.0] - 2026-06-19
 
 ### Added
 
 - **`tasks comments` subcommand** — read a task's comments from the CLI: `asana tasks comments <task-id>`. Fetches the task's stories, filters to comment-type stories, and prints each comment's author, timestamp, and text. Supports `--json` for scripting and agent use. (`asana tasks view` returns only the task object and never included comments.)
+
+### Changed
+
+- **Claude plugin** — updated `argument-hint` for consistency across commands
+- **Docs** — cited PR #13 and beads-2z7 in the v4 safety & workflow design spec
 
 ## [3.2.0] - 2026-05-03
 
