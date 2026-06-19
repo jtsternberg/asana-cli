@@ -63,6 +63,22 @@ asana tasks delete --help
 asana tasks view --help
 ```
 
+### View task comments
+
+`asana tasks view` returns only the task object — it does **not** include comments. To read the comments (the discussion thread) on a task, use `asana tasks comments <task-id>`. It fetches the task's stories, filters to comment-type stories, and prints each comment's author, timestamp, and text. Supports `--json`.
+
+```!
+asana tasks comments --help
+```
+
+```bash
+# Read the comments on a task
+asana tasks comments 1234567890
+
+# Machine-readable: author + text + created_at per comment
+asana tasks comments 1234567890 --json | jq '.[] | {author, created_at, text}'
+```
+
 ### List vs Search
 
 Use **`tasks list`** for a quick view of tasks assigned to a user. Use **`tasks search`** for anything more flexible — filtering by creator, tags, blocked status, date ranges, or keyword.
@@ -97,7 +113,7 @@ asana tasks search --help
 ## Structured Output
 
 Most commands support `--json` for machine-readable output:
-- **Tasks:** `list`, `search`, `view`
+- **Tasks:** `list`, `search`, `view`, `comments`
 - **Projects:** `list`, `sections`, `tasks`
 - **Users:** `list`
 - **Teams:** `list`

@@ -136,6 +136,7 @@ asana tasks update <task-id> \
 
 ```bash
 asana tasks view <task-id>              # View task details (or omit ID for interactive)
+asana tasks comments <task-id>          # Read a task's comments (author + text + time)
 asana tasks list                        # List all your tasks
 asana tasks list --sort due-desc        # Sort by descending due date
 asana tasks search --assignee me        # Search your assigned tasks
@@ -148,12 +149,13 @@ Task IDs are shown in `list` and `search` output for easy use with other command
 
 ### JSON Output
 
-All task commands (`list`, `search`, `view`) support `--json` for machine-readable output:
+All task commands (`list`, `search`, `view`, `comments`) support `--json` for machine-readable output:
 
 ```bash
 asana tasks list --json                 # JSON array of {id, name, due_on}
 asana tasks search --query "bug" --json # Search results as JSON
 asana tasks view <task-id> --json       # Full task details as JSON
+asana tasks comments <task-id> --json   # Task comments as JSON
 ```
 
 ### Name Matching
