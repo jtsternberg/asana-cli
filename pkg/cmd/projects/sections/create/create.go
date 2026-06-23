@@ -65,12 +65,17 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	project, err := resolveProject(client, cfg.Workspace.ID, opts.ProjectName)
+	project, err := resolveProject(client, ws.ID, opts.ProjectName)
 	if err != nil {
 		return err
 	}

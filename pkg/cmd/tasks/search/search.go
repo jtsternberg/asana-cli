@@ -155,7 +155,10 @@ func runSearch(opts *SearchOptions) error {
 		return err
 	}
 
-	workspace := cfg.Workspace
+	workspace, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
 
 	// Resolve assignee names to IDs (the API only accepts IDs)
 	if len(opts.Assignee) > 0 {

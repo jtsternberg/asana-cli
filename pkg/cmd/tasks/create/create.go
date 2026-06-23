@@ -85,6 +85,10 @@ func runCreate(opts *CreateOptions) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
 	client, err := opts.Client()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
@@ -106,7 +110,7 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	// --- Assignee ---
-	assignee, err := getOrSelectAssignee(opts, ni, cfg, client)
+	assignee, err := getOrSelectAssignee(opts, ni, cfg, ws.ID, client)
 	if err != nil {
 		return err
 	}
@@ -130,7 +134,7 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	// --- Project ---
-	project, err := getProject(opts, ni, cfg.Workspace.ID, client)
+	project, err := getProject(opts, ni, ws.ID, client)
 	if err != nil {
 		return err
 	}
@@ -142,7 +146,7 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	// --- Followers (optional) ---
-	followerIDs, followerNames, err := resolveFollowers(opts, cfg, client)
+	followerIDs, followerNames, err := resolveFollowers(opts, cfg, ws.ID, client)
 	if err != nil {
 		return err
 	}
@@ -153,7 +157,7 @@ func runCreate(opts *CreateOptions) error {
 			DueOn: dueDate,
 			Notes: description,
 		},
-		Workspace: cfg.Workspace.ID,
+		Workspace: ws.ID,
 		Assignee:  assignee.ID,
 		Followers: followerIDs,
 		Projects:  []string{project.ID},
@@ -192,8 +196,8 @@ func runCreate(opts *CreateOptions) error {
 	return nil
 }
 
-func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, client *asana.Client) (*asana.User, error) {
-	ws := &asana.Workspace{ID: cfg.Workspace.ID}
+func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, workspaceID string, client *asana.Client) (*asana.User, error) {
+	ws := &asana.Workspace{ID: workspaceID}
 	users, _, err := ws.Users(client)
 	if err != nil {
 		return nil, fmt.Errorf("cannot fetch users: %w", err)
@@ -399,12 +403,12 @@ func getSection(opts *CreateOptions, ni bool, projectID string, client *asana.Cl
 
 // resolveFollowers resolves follower names/IDs to user IDs.
 // Returns (followerIDs, followerNames, error).
-func resolveFollowers(opts *CreateOptions, cfg *config.Config, client *asana.Client) ([]string, []string, error) {
+func resolveFollowers(opts *CreateOptions, cfg *config.Config, workspaceID string, client *asana.Client) ([]string, []string, error) {
 	if len(opts.Followers) == 0 {
 		return nil, nil, nil
 	}
 
-	ws := &asana.Workspace{ID: cfg.Workspace.ID}
+	ws := &asana.Workspace{ID: workspaceID}
 	users, _, err := ws.Users(client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot fetch users for follower resolution: %w", err)

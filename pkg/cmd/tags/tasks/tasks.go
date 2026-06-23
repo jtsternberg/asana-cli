@@ -70,6 +70,11 @@ func runTasks(opts *TasksOptions) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
@@ -77,7 +82,7 @@ func runTasks(opts *TasksOptions) error {
 
 	var tag *asana.Tag
 	if opts.ID == "" {
-		tag, err = getTag(opts, cfg.Workspace.ID, client)
+		tag, err = getTag(opts, ws.ID, client)
 		if err != nil {
 			return err
 		}

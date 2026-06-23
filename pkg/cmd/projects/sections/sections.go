@@ -62,12 +62,17 @@ func runSections(opts *SectionsOptions) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	defaultWS, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	ws := &asana.Workspace{ID: cfg.Workspace.ID}
+	ws := &asana.Workspace{ID: defaultWS.ID}
 	projects, err := ws.AllProjects(client)
 	if err != nil {
 		return fmt.Errorf("failed to fetch projects: %w", err)

@@ -119,7 +119,12 @@ func listRun(opts *ListOptions) error {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
-	tasks, err := fetchTasks(opts, cfg.Workspace.ID, opts.Limit)
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
+	tasks, err := fetchTasks(opts, ws.ID, opts.Limit)
 	if err != nil {
 		return err
 	}
@@ -164,7 +169,7 @@ func fetchTasks(opts *ListOptions, workspaceID string, limit int) ([]*asana.Task
 			"custom_fields.display_value", "num_subtasks", "parent",
 			"parent.name",
 		},
-		Limit:  limit,
+		Limit: limit,
 	}
 
 	for {

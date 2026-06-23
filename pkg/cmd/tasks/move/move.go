@@ -82,13 +82,18 @@ func runMove(opts *MoveOptions) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
 	// --- Task selection ---
-	task, err := getOrSelectTask(opts, cfg, client)
+	task, err := getOrSelectTask(opts, ws.ID, client)
 	if err != nil {
 		return err
 	}
@@ -103,7 +108,7 @@ func runMove(opts *MoveOptions) error {
 	ni := opts.isNonInteractive()
 
 	// --- Target project ---
-	targetProject, err := getProject(opts, ni, cfg.Workspace.ID, client)
+	targetProject, err := getProject(opts, ni, ws.ID, client)
 	if err != nil {
 		return err
 	}
@@ -162,7 +167,7 @@ func runMove(opts *MoveOptions) error {
 	return nil
 }
 
-func getOrSelectTask(opts *MoveOptions, cfg *config.Config, client *asana.Client) (*asana.Task, error) {
+func getOrSelectTask(opts *MoveOptions, workspaceID string, client *asana.Client) (*asana.Task, error) {
 	if opts.TaskID != "" {
 		return &asana.Task{ID: opts.TaskID}, nil
 	}
@@ -170,7 +175,7 @@ func getOrSelectTask(opts *MoveOptions, cfg *config.Config, client *asana.Client
 	// Interactive: select from user's tasks
 	tasks, _, err := client.QueryTasks(&asana.TaskQuery{
 		Assignee:       "me",
-		Workspace:      cfg.Workspace.ID,
+		Workspace:      workspaceID,
 		CompletedSince: "now",
 	}, &asana.Options{
 		Fields: []string{"name", "due_on"},

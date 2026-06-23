@@ -71,12 +71,17 @@ func runList(opts *ListOptions) error {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return fmt.Errorf("failed to create Asana client: %w", err)
 	}
 
-	users, err := fetchUsers(client, cfg.Workspace.ID, opts.Limit)
+	users, err := fetchUsers(client, ws.ID, opts.Limit)
 	if err != nil {
 		return fmt.Errorf("failed to fetch users: %w", err)
 	}
@@ -89,7 +94,7 @@ func runList(opts *ListOptions) error {
 		return printUsersJSON(opts.IO, users)
 	}
 
-	return printUsers(opts.IO, cfg.Workspace.Name, users, opts.WithID)
+	return printUsers(opts.IO, ws.Name, users, opts.WithID)
 }
 
 func sortUsers(users []*asana.User, sortOrder string) error {

@@ -23,9 +23,14 @@ func SelectTask(opts *BaseOptions, c *asana.Client) (*asana.Task, error) {
 		return nil, fmt.Errorf("failed to get config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return nil, err
+	}
+
 	tasks, _, err := c.QueryTasks(&asana.TaskQuery{
 		Assignee:       "me",
-		Workspace:      cfg.Workspace.ID,
+		Workspace:      ws.ID,
 		CompletedSince: "now",
 	}, &asana.Options{
 		Fields: []string{"name", "due_on"},

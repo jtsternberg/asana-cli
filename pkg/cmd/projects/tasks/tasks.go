@@ -102,12 +102,17 @@ func runTasks(opts *TasksOptions) error {
 		return err
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return err
 	}
 
-	project, err := selectProject(opts, client, cfg.Workspace.ID)
+	project, err := selectProject(opts, client, ws.ID)
 	if err != nil {
 		return err
 	}
@@ -313,13 +318,13 @@ type jsonRef struct {
 }
 
 type jsonTask struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Assignee     *jsonRef `json:"assignee"`
-	DueOn        string   `json:"due_on,omitempty"`
-	Completed    *bool    `json:"completed"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Assignee     *jsonRef  `json:"assignee"`
+	DueOn        string    `json:"due_on,omitempty"`
+	Completed    *bool     `json:"completed"`
 	Tags         []jsonRef `json:"tags,omitempty"`
-	PermalinkURL string   `json:"permalink_url,omitempty"`
+	PermalinkURL string    `json:"permalink_url,omitempty"`
 }
 
 type jsonSectionTasks struct {

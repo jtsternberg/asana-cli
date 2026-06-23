@@ -73,6 +73,11 @@ func runList(opts *ListOptions) error {
 		return err
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return err
@@ -80,7 +85,7 @@ func runList(opts *ListOptions) error {
 
 	var projects []*asana.Project
 	workspace := &asana.Workspace{
-		ID: cfg.Workspace.ID,
+		ID: ws.ID,
 	}
 
 	if opts.Search != "" {
@@ -103,7 +108,7 @@ func runList(opts *ListOptions) error {
 		}
 	}
 
-	return renderOutput(projects, opts.IO, opts.JSON, cfg.Workspace.Name)
+	return renderOutput(projects, opts.IO, opts.JSON, ws.Name)
 }
 
 func renderOutput(projects []*asana.Project, io *iostreams.IOStreams, jsonOutput bool, workspaceName string) error {

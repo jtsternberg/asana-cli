@@ -52,11 +52,16 @@ func runConfigGet(opts *GetOptions, key string) error {
 			return err
 		}
 
+		ws, err := cfg.RequireWorkspace()
+		if err != nil {
+			return err
+		}
+
 		fmt.Fprintf(
 			opts.IO.Out,
 			"Default workspace is %s (%s)\n",
-			cs.Bold(cfg.Workspace.Name),
-			cfg.Workspace.ID,
+			cs.Bold(ws.Name),
+			ws.ID,
 		)
 	}
 

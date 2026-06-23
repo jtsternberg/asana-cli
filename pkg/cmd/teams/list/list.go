@@ -53,12 +53,17 @@ func listRun(opts *ListOptions) error {
 		return err
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return err
 	}
 
-	teams, err := cfg.Workspace.AllTeams(client)
+	teams, err := ws.AllTeams(client)
 	if err != nil {
 		return fmt.Errorf("failed to fetch teams: %w", err)
 	}
@@ -67,7 +72,7 @@ func listRun(opts *ListOptions) error {
 		return displayJSON(teams, opts.IO)
 	}
 
-	displayText(teams, opts.IO, cfg.Workspace.Name)
+	displayText(teams, opts.IO, ws.Name)
 	return nil
 }
 

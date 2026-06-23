@@ -106,6 +106,37 @@ func TestConfig(t *testing.T) {
 	})
 }
 
+func TestRequireWorkspace(t *testing.T) {
+	t.Run("returns workspace when configured", func(t *testing.T) {
+		cfg := &Config{
+			Workspace: &asana.Workspace{ID: "123", Name: "TestWorkspace"},
+		}
+
+		ws, err := cfg.RequireWorkspace()
+		require.NoError(t, err)
+		assert.Equal(t, "123", ws.ID)
+		assert.Equal(t, "TestWorkspace", ws.Name)
+	})
+
+	t.Run("errors when workspace is nil", func(t *testing.T) {
+		cfg := &Config{}
+
+		ws, err := cfg.RequireWorkspace()
+		require.Error(t, err)
+		assert.Nil(t, ws)
+		assert.Contains(t, err.Error(), "No default workspace configured")
+	})
+
+	t.Run("errors when workspace ID is empty", func(t *testing.T) {
+		cfg := &Config{Workspace: &asana.Workspace{Name: "NoID"}}
+
+		ws, err := cfg.RequireWorkspace()
+		require.Error(t, err)
+		assert.Nil(t, ws)
+		assert.Contains(t, err.Error(), "No default workspace configured")
+	})
+}
+
 func TestConfigDir(t *testing.T) {
 	tempDir := t.TempDir()
 

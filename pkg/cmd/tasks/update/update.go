@@ -125,6 +125,11 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return fmt.Errorf("failed to create Asana client: %w", err)
@@ -164,7 +169,7 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	}
 
 	if opts.Assignee != "" {
-		userID, err := resolveUserID(opts.Assignee, cfg, client)
+		userID, err := resolveUserID(opts.Assignee, cfg, ws.ID, client)
 		if err != nil {
 			return err
 		}
@@ -175,7 +180,7 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	var followerIDs []string
 	if len(opts.Followers) > 0 {
 		var err error
-		followerIDs, _, err = resolveFollowerIDs(opts.Followers, cfg, client)
+		followerIDs, _, err = resolveFollowerIDs(opts.Followers, cfg, ws.ID, client)
 		if err != nil {
 			return err
 		}
@@ -240,6 +245,11 @@ func selectTask(opts *UpdateOptions) (*asana.Task, error) {
 		return nil, fmt.Errorf("failed to get config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return nil, err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Asana client: %w", err)
@@ -247,7 +257,7 @@ func selectTask(opts *UpdateOptions) (*asana.Task, error) {
 
 	tasks, _, err := client.QueryTasks(&asana.TaskQuery{
 		Assignee:       "me",
-		Workspace:      cfg.Workspace.ID,
+		Workspace:      ws.ID,
 		CompletedSince: "now",
 	}, &asana.Options{
 		Fields: []string{"name", "due_on"},
@@ -453,8 +463,8 @@ func parseDueDate(input string) (*asana.Date, error) {
 	return due, nil
 }
 
-func resolveUserID(name string, cfg *config.Config, client *asana.Client) (string, error) {
-	ws := &asana.Workspace{ID: cfg.Workspace.ID}
+func resolveUserID(name string, cfg *config.Config, workspaceID string, client *asana.Client) (string, error) {
+	ws := &asana.Workspace{ID: workspaceID}
 	users, _, err := ws.Users(client)
 	if err != nil {
 		return "", fmt.Errorf("cannot fetch users: %w", err)
@@ -491,12 +501,12 @@ func resolveUserID(name string, cfg *config.Config, client *asana.Client) (strin
 	return "", fmt.Errorf("user %q not found in workspace", name)
 }
 
-func resolveFollowerIDs(followers []string, cfg *config.Config, client *asana.Client) ([]string, []string, error) {
+func resolveFollowerIDs(followers []string, cfg *config.Config, workspaceID string, client *asana.Client) ([]string, []string, error) {
 	if len(followers) == 0 {
 		return nil, nil, nil
 	}
 
-	ws := &asana.Workspace{ID: cfg.Workspace.ID}
+	ws := &asana.Workspace{ID: workspaceID}
 	users, _, err := ws.Users(client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot fetch users: %w", err)

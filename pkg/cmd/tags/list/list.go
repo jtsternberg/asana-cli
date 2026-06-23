@@ -64,13 +64,18 @@ func runList(opts *ListOptions) error {
 		return fmt.Errorf("failed to get config: %w", err)
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	client, err := opts.Client()
 	if err != nil {
 		return err
 	}
 
 	var tags []*asana.Tag
-	workspace := &asana.Workspace{ID: cfg.Workspace.ID}
+	workspace := &asana.Workspace{ID: ws.ID}
 
 	if opts.Favorite {
 		tags, err = fetchFavoriteTags(client, workspace)
@@ -81,7 +86,7 @@ func runList(opts *ListOptions) error {
 		return err
 	}
 
-	return displayTags(tags, opts.IO, opts.JSON, cfg.Workspace.Name)
+	return displayTags(tags, opts.IO, opts.JSON, ws.Name)
 }
 
 func displayTags(tags []*asana.Tag, io *iostreams.IOStreams, jsonOutput bool, workspaceName string) error {

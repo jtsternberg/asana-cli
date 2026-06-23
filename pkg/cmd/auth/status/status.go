@@ -88,8 +88,12 @@ func getStatus(opts *StatusOptions) (*Status, error) {
 		return nil, fmt.Errorf("failed to get config: %w", err)
 	}
 
-	status.WorkspaceID = cfg.Workspace.ID
-	status.WorkspaceName = cfg.Workspace.Name
+	// Workspace may be unset (nil) when authenticated but no default workspace
+	// has been selected; printStatus reports that gracefully.
+	if cfg.Workspace != nil {
+		status.WorkspaceID = cfg.Workspace.ID
+		status.WorkspaceName = cfg.Workspace.Name
+	}
 
 	if status.LoggedIn {
 		client, err := opts.Client()

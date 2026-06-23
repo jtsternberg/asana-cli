@@ -134,6 +134,27 @@ func (c *Config) Load() error {
 	return nil
 }
 
+// RequireWorkspace returns the configured default workspace or a friendly
+// error when none is set. Commands that operate against a workspace must call
+// this instead of dereferencing c.Workspace directly: Workspace is a pointer
+// that stays nil when the config loads successfully but no default workspace
+// has been selected (e.g. an empty or partial config file), and dereferencing
+// it then panics with a nil pointer SIGSEGV.
+func (c *Config) RequireWorkspace() (*asana.Workspace, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.Workspace == nil || c.Workspace.ID == "" {
+		return nil, Error{Message: heredoc.Docf(`
+            No default workspace configured. Run %[1]sasana auth login%[1]s to
+            authenticate and select one, or %[1]sasana config set default-workspace%[1]s
+            if you are already logged in.
+        `, "`")}
+	}
+
+	return c.Workspace, nil
+}
+
 func (c *Config) Set(field string, value any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

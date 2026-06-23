@@ -89,9 +89,14 @@ func viewRun(opts *ViewOptions) error {
 		return err
 	}
 
+	ws, err := cfg.RequireWorkspace()
+	if err != nil {
+		return err
+	}
+
 	allTasks, _, err := client.QueryTasks(&asana.TaskQuery{
 		Assignee:       "me",
-		Workspace:      cfg.Workspace.ID,
+		Workspace:      ws.ID,
 		CompletedSince: "now",
 	}, &asana.Options{
 		Fields: []string{"due_on", "name"},
@@ -150,31 +155,31 @@ func displayJSON(task *asana.Task, io *iostreams.IOStreams) error {
 		Section *jsonRef `json:"section,omitempty"`
 	}
 	type jsonTask struct {
-		ID              string            `json:"id"`
-		Name            string            `json:"name"`
-		ResourceSubtype string            `json:"resource_subtype,omitempty"`
-		Assignee        *jsonRef          `json:"assignee"`
-		Completed       *bool             `json:"completed"`
-		CompletedAt     string            `json:"completed_at,omitempty"`
-		CreatedAt       string            `json:"created_at,omitempty"`
-		ModifiedAt      string            `json:"modified_at,omitempty"`
-		DueOn           string            `json:"due_on,omitempty"`
-		DueAt           string            `json:"due_at,omitempty"`
-		StartOn         string            `json:"start_on,omitempty"`
-		Notes           string            `json:"notes,omitempty"`
-		Parent          *jsonRef          `json:"parent,omitempty"`
-		Projects        []*jsonRef        `json:"projects,omitempty"`
-		Tags            []*jsonRef        `json:"tags,omitempty"`
-		Memberships     []*jsonMembership `json:"memberships,omitempty"`
+		ID              string             `json:"id"`
+		Name            string             `json:"name"`
+		ResourceSubtype string             `json:"resource_subtype,omitempty"`
+		Assignee        *jsonRef           `json:"assignee"`
+		Completed       *bool              `json:"completed"`
+		CompletedAt     string             `json:"completed_at,omitempty"`
+		CreatedAt       string             `json:"created_at,omitempty"`
+		ModifiedAt      string             `json:"modified_at,omitempty"`
+		DueOn           string             `json:"due_on,omitempty"`
+		DueAt           string             `json:"due_at,omitempty"`
+		StartOn         string             `json:"start_on,omitempty"`
+		Notes           string             `json:"notes,omitempty"`
+		Parent          *jsonRef           `json:"parent,omitempty"`
+		Projects        []*jsonRef         `json:"projects,omitempty"`
+		Tags            []*jsonRef         `json:"tags,omitempty"`
+		Memberships     []*jsonMembership  `json:"memberships,omitempty"`
 		CustomFields    []*jsonCustomField `json:"custom_fields,omitempty"`
-		Dependencies    []*jsonRef        `json:"dependencies,omitempty"`
-		Dependents      []*jsonRef        `json:"dependents,omitempty"`
-		Followers       []*jsonRef        `json:"followers,omitempty"`
-		Workspace       *jsonRef          `json:"workspace,omitempty"`
-		NumSubtasks     int32             `json:"num_subtasks"`
-		Liked           bool              `json:"liked"`
-		NumLikes        int32             `json:"num_likes"`
-		PermalinkURL    string            `json:"permalink_url,omitempty"`
+		Dependencies    []*jsonRef         `json:"dependencies,omitempty"`
+		Dependents      []*jsonRef         `json:"dependents,omitempty"`
+		Followers       []*jsonRef         `json:"followers,omitempty"`
+		Workspace       *jsonRef           `json:"workspace,omitempty"`
+		NumSubtasks     int32              `json:"num_subtasks"`
+		Liked           bool               `json:"liked"`
+		NumLikes        int32              `json:"num_likes"`
+		PermalinkURL    string             `json:"permalink_url,omitempty"`
 	}
 
 	jt := jsonTask{
