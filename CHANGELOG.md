@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.3.1] - 2026-06-23
+
+### Fixed
+
+- **Missing default workspace no longer crashes commands** — commands that need a workspace now show a friendly setup error when the config has no default workspace instead of panicking on a nil `cfg.Workspace`.
+
+### Changed
+
+- **Release docs** — captured GoReleaser upload and annotated-tag gotchas in the repo-local publish release skill.
+
 ## [3.3.0] - 2026-06-19
 
 ### Added
