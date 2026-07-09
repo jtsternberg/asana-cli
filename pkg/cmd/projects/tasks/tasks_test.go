@@ -2,13 +2,74 @@ package tasks
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/h2non/gock"
 	"github.com/timwehrle/asana/internal/api/asana"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
+
+type obj map[string]any
+
+// TestSelectProject_ByNameUsesTypeahead verifies that resolving a project by
+// name uses the workspace typeahead endpoint (constant-cost) rather than
+// enumerating every project in the workspace. Only the typeahead endpoint is
+// mocked; if selectProject fell back to /workspaces/{id}/projects it would hit
+// an unmocked endpoint and error.
+func TestSelectProject_ByNameUsesTypeahead(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://app.asana.com").
+		Get("/api/1.0/workspaces/WS1/typeahead").
+		MatchParam("resource_type", "project").
+		Reply(200).
+		JSON(obj{"data": []obj{
+			{"gid": "1204651307630741", "name": "Outgoing Tasks"},
+		}})
+
+	opts := &TasksOptions{ProjectName: "Outgoing Tasks"}
+	client := asana.NewClient(http.DefaultClient)
+
+	project, err := selectProject(opts, client, "WS1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if project.ID != "1204651307630741" {
+		t.Fatalf("expected project 1204651307630741, got %q", project.ID)
+	}
+	if !gock.IsDone() {
+		t.Errorf("expected typeahead request; pending mocks: %d", len(gock.Pending()))
+	}
+}
+
+// TestSelectProject_ByIDFetchesDirectly verifies that a numeric project ID is
+// fetched directly by ID rather than searched by name (typeahead matches on
+// name, not gid).
+func TestSelectProject_ByIDFetchesDirectly(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://app.asana.com").
+		Get("/api/1.0/projects/1204651307630741").
+		Reply(200).
+		JSON(obj{"data": obj{"gid": "1204651307630741", "name": "Outgoing Tasks"}})
+
+	opts := &TasksOptions{ProjectName: "1204651307630741"}
+	client := asana.NewClient(http.DefaultClient)
+
+	project, err := selectProject(opts, client, "WS1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if project.ID != "1204651307630741" {
+		t.Fatalf("expected project 1204651307630741, got %q", project.ID)
+	}
+	if !gock.IsDone() {
+		t.Errorf("expected direct fetch by ID; pending mocks: %d", len(gock.Pending()))
+	}
+}
 
 // boolPtr is a test helper for creating *bool values.
 func boolPtr(b bool) *bool { return &b }

@@ -2,19 +2,30 @@ package shared
 
 import "github.com/timwehrle/asana/internal/api/asana"
 
+const maxPageSize = 100
+
 func FetchAllProjects(
 	client *asana.Client,
 	workspace *asana.Workspace,
 	limit int,
 ) ([]*asana.Project, error) {
-	initialCapacity := 100
+	initialCapacity := maxPageSize
 	if limit > 0 {
 		initialCapacity = limit
 	}
 
+	// Always request a bounded page. The Asana API rejects an unbounded
+	// projects request with "400: The result is too large", so page size is
+	// fixed at 100 (the API max) regardless of the caller's total cap; `limit`
+	// only truncates the accumulated results below.
+	pageSize := maxPageSize
+	if limit > 0 && limit < maxPageSize {
+		pageSize = limit
+	}
+
 	projects := make([]*asana.Project, 0, initialCapacity)
 	options := &asana.Options{
-		Limit:  limit,
+		Limit: pageSize,
 		Fields: []string{
 			"name",
 			"archived",

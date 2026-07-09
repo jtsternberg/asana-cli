@@ -173,6 +173,35 @@ asana projects sections create --help
 asana projects tasks --help
 ```
 
+Accepts a project **name** or **numeric ID**. Both resolve efficiently — name lookups use the typeahead API (no project-count ceiling), so this works even in workspaces with thousands of projects.
+
+### List tasks in a specific SECTION of a project
+
+**Sections are not assignees.** A project can have a section *named after a person* (e.g. a "Tom" section) that is completely independent of who its tasks are assigned to. "Tasks in the Tom section" and "tasks assigned to Tom" are **different questions with different answers** — do not substitute one for the other.
+
+To get the tasks that belong to a section, use `--sections` (groups tasks by their real section membership), then filter by section name:
+
+```bash
+# Tasks that live in the "Tom" section (section membership — NOT assignee)
+asana projects tasks "Outgoing Tasks" --sections --json \
+  | jq '.[] | select(.section == "Tom") | .tasks'
+
+# Count them
+asana projects tasks "Outgoing Tasks" --sections --json \
+  | jq '.[] | select(.section == "Tom") | .tasks | length'
+```
+
+Contrast with assignee filtering, which ignores sections entirely:
+
+```bash
+# Tasks ASSIGNED to Tom anywhere in the project (may span many sections,
+# and may miss Tom-section tasks assigned to someone else or unassigned)
+asana tasks search --project <project-id> --json \
+  | jq '.[] | select(.assignee.id == "<tom-gid>")'
+```
+
+**Caveat — `--sections` uses a board-view endpoint.** Section-scoped task listing relies on Asana's `sections/{id}/tasks` endpoint, which is populated for **board-layout** projects. On a list-layout project a section may return no tasks even when the Asana web UI shows some. If `--sections` yields empty sections that you know are non-empty, say so explicitly rather than silently falling back to an assignee filter — see "Answering read queries honestly" below.
+
 ## Users
 
 ### List workspace users
@@ -236,11 +265,22 @@ When the user describes an action in natural language, translate it to the corre
 | "assign to me" / "I'll take this" | `--assignee me` | |
 | "assign to Chris" | `--assignee "Chris"` | Name matching works on create, update, AND search |
 | "find Tom's tasks" / "search Tom's stuff" | `--assignee "Tom"` | Search resolves names to IDs automatically |
+| "tasks in Tom's section" / "the Tom column" / "what's in the Tom section" | `projects tasks <project> --sections` + filter by section name | A **section** named after a person is NOT the same as its assignee. See "List tasks in a specific SECTION". Do not translate this to `--assignee`. |
 | "find the outgoing project" / "which project is X in?" | `asana projects list -q "outgoing"` | Uses typeahead API — no 100-project ceiling |
 | "mark it done" / "complete this" | `--complete` | Update command only |
 | "move it to Project X" | `asana tasks move <task-id>` | Don't delete and recreate |
 
 **Critical rule:** For `--due today` and `--due tomorrow`, ALWAYS pass the keyword literally. The CLI resolves it using `time.Now()` on the local machine, which is more reliable than the agent computing a date from session context (which may be stale or in a different timezone).
+
+## Answering read queries honestly
+
+Reads deserve the same rigor as writes. When you search, filter, or count tasks:
+
+1. **Answer the question that was asked.** If you were asked for a *section's* tasks, return section membership — not a proxy like "tasks assigned to the person the section is named after." If the two happen to differ, that difference is the point.
+2. **Never silently swap the query.** If the intended approach fails (an endpoint errors, returns empty, or hits a limit), STOP and say what failed. Do not quietly substitute a different filter and present its results as if they answered the original question. A wrong-but-confident count is worse than "I couldn't get that directly — here's what I tried."
+3. **Don't present a proxy count as the real count.** "24 tasks in the Tom section" and "26 tasks assigned to Tom" are different numbers answering different questions. Label which one you actually computed.
+4. **Watch for silent truncation.** `--limit N` caps totals; if a result set is exactly N, more may exist. State when a count could be truncated.
+5. **Large workspace? Resolve by name or ID directly** (`projects tasks`, `projects list -q`) — these use the typeahead API and won't hit the "result is too large" 400 that unbounded enumeration triggers.
 
 ## Post-Mutation Verification
 

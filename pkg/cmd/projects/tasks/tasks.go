@@ -129,7 +129,18 @@ func selectProject(
 	client *asana.Client,
 	workspaceID string,
 ) (*asana.Project, error) {
-	projects, err := shared.FetchAllProjects(client, &asana.Workspace{ID: workspaceID}, 0)
+	ws := &asana.Workspace{ID: workspaceID}
+
+	// If a project name/ID was provided, resolve it directly instead of
+	// enumerating every project in the workspace — enumeration is expensive
+	// and, in large workspaces, the unbounded first page can 400 with
+	// "The result is too large".
+	if opts.ProjectName != "" {
+		return resolveProject(client, ws, opts.ProjectName)
+	}
+
+	// Otherwise, enumerate for interactive selection.
+	projects, err := shared.FetchAllProjects(client, ws, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch projects: %w", err)
 	}
@@ -139,12 +150,7 @@ func selectProject(
 		return nil, errors.New("no projects found")
 	}
 
-	// If a project name/ID was provided, find it directly
-	if opts.ProjectName != "" {
-		return findProject(projects, opts.ProjectName)
-	}
-
-	// Otherwise, prompt interactively
+	// Prompt interactively
 	projectNames := make([]string, len(projects))
 	for i, project := range projects {
 		projectNames[i] = project.Name
@@ -156,6 +162,54 @@ func selectProject(
 	}
 
 	return projects[index], nil
+}
+
+// resolveProject resolves a project by ID or name without enumerating the
+// whole workspace. Numeric input is treated as a gid and fetched directly;
+// everything else is resolved through the workspace typeahead API (the same
+// endpoint `projects list -q` uses), which has no project-count ceiling.
+func resolveProject(
+	client *asana.Client,
+	ws *asana.Workspace,
+	nameOrID string,
+) (*asana.Project, error) {
+	if isProjectID(nameOrID) {
+		project := &asana.Project{}
+		project.ID = nameOrID
+		if err := project.Fetch(client); err != nil {
+			return nil, fmt.Errorf("project %q not found: %w", nameOrID, err)
+		}
+		return project, nil
+	}
+
+	projects, err := ws.SearchProjects(client, nameOrID, 100)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search projects: %w", err)
+	}
+	if len(projects) == 0 {
+		return nil, fmt.Errorf("project %q not found in workspace", nameOrID)
+	}
+
+	return findProject(projects, nameOrID)
+}
+
+// isProjectID reports whether s looks like an Asana gid (all digits).
+//
+// This is intentionally greedy: an all-digit input is always treated as a gid
+// and fetched directly, never resolved by name. A project literally named
+// after a bare integer (e.g. "2024") is therefore unreachable by that name —
+// an accepted trade-off, since such names are vanishingly rare and inherently
+// ambiguous with gids anyway.
+func isProjectID(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func findProject(projects []*asana.Project, name string) (*asana.Project, error) {
