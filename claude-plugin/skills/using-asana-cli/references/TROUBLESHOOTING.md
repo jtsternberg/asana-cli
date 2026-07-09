@@ -29,7 +29,7 @@ Ensure you're running the fork with non-interactive support (version should show
 |-------|-------|-----|
 | `unknown flag: --name` | Running upstream v1.2.0 (no flag support) | Install the fork: `asana upgrade --yes` |
 | `could not prompt: EOF` | Interactive prompt in non-TTY context | Use flags to skip prompts (`-n`, `-a`, `-p`) |
-| `The result is too large` | API pagination issue | Use `--search`/`-q` to narrow results, or commands that paginate properly |
+| `The result is too large` | Unbounded project enumeration in a large workspace (fixed in-CLI for `projects tasks`/`projects list` as of the name-resolution fix). If seen on an older build: `asana upgrade --yes` | Resolve projects by name or ID directly (`projects tasks "Name"`, `projects list -q "Name"`) — these use the typeahead API and never enumerate the whole workspace |
 | `section "X" not found in project` | Section name doesn't exist | Run `asana projects sections "Project Name"` to see available sections |
 | `assignee "X" not found` | Name doesn't match any workspace user | Run `asana users list` to see available users; try partial name match |
 | `followers: Cannot write this property` | Using followers in update request body | Followers must be added via `AddFollowers` endpoint (handled in fork) |

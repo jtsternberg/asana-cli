@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **`projects tasks` and `projects list` no longer 400 in large workspaces** — resolving a project by name previously enumerated *every* project in the workspace, and the unbounded first request returned `400: The result is too large`. `FetchAllProjects` now always requests a bounded page (≤100), and `projects tasks <name>` resolves via the typeahead API (numeric IDs are fetched directly), the same ceiling-free path `projects list -q` uses.
+
 ## [3.3.1] - 2026-06-23
 
 ### Fixed
