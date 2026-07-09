@@ -1,10 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [3.3.2] - 2026-07-09
 
 ### Fixed
 
-- **`projects tasks` and `projects list` no longer 400 in large workspaces** — resolving a project by name previously enumerated *every* project in the workspace, and the unbounded first request returned `400: The result is too large`. `FetchAllProjects` now always requests a bounded page (≤100), and `projects tasks <name>` resolves via the typeahead API (numeric IDs are fetched directly), the same ceiling-free path `projects list -q` uses.
+- **`projects tasks` and `projects list` no longer 400 in large workspaces** — resolving a project by name previously enumerated *every* project in the workspace, and because `Options.Limit` is `omitempty`, a `limit=0` "no cap" dropped the limit param entirely and sent an unbounded request that Asana rejected with `400: The result is too large`. `FetchAllProjects` now always requests a bounded page (≤100) and treats `limit` purely as a total cap; `projects tasks <name>` resolves via the typeahead API (numeric IDs fetched directly by gid), the same ceiling-free path `projects list -q` already used. Full enumeration is now used only for interactive selection.
+
+### Changed
+
+- **Agent skill docs** — added a section-membership workflow with an explicit section-vs-assignee disambiguation (a section *named* after a person is not the same as tasks *assigned to* that person), the board-view caveat for `--sections`, and an "Answering read queries honestly" discipline against silently substituting a proxy query when the intended one fails.
 
 ## [3.3.1] - 2026-06-23
 
