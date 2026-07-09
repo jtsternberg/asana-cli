@@ -194,6 +194,12 @@ func resolveProject(
 }
 
 // isProjectID reports whether s looks like an Asana gid (all digits).
+//
+// This is intentionally greedy: an all-digit input is always treated as a gid
+// and fetched directly, never resolved by name. A project literally named
+// after a bare integer (e.g. "2024") is therefore unreachable by that name —
+// an accepted trade-off, since such names are vanishingly rare and inherently
+// ambiguous with gids anyway.
 func isProjectID(s string) bool {
 	if s == "" {
 		return false
