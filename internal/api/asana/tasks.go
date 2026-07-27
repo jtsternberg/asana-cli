@@ -1,6 +1,7 @@
 package asana
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -177,6 +178,70 @@ type UpdateTaskRequest struct {
 	Assignee     string         `json:"assignee,omitempty"`  // User to which this task is assigned, or null if the task is unassigned.
 	Followers    []string       `json:"followers,omitempty"` // Array of users following this task.
 	CustomFields map[string]any `json:"custom_fields,omitempty"`
+
+	// Clear names fields to blank out rather than set. Every field on this
+	// request carries omitempty -- necessary, so that an update touches only
+	// what was asked for -- with the side effect that a zero value is
+	// indistinguishable from an absent one and no field can be emptied. Listing
+	// a field here forces it into the payload with the value that clears it.
+	Clear []ClearableField `json:"-"`
+}
+
+// ClearableField names a task field that an update can blank out.
+type ClearableField string
+
+const (
+	ClearAssignee ClearableField = "assignee"
+	ClearDueDate  ClearableField = "due_on"
+	ClearNotes    ClearableField = "notes"
+)
+
+// clearValues maps each clearable field to the JSON that empties it. The value
+// is not uniform: Asana blanks a reference or a date with null, but rejects null
+// for the free-text fields, which want an empty string instead.
+//
+// Clearing the description sends only notes, never html_notes: the two are
+// views of one field, Asana rejects a request carrying both, and blanking
+// either blanks the description.
+var clearValues = map[ClearableField]map[string]any{
+	ClearAssignee: {"assignee": nil},
+	ClearDueDate:  {"due_on": nil},
+	ClearNotes:    {"notes": ""},
+}
+
+// MarshalJSON emits the ordinary payload, then forces in the cleared fields.
+func (t UpdateTaskRequest) MarshalJSON() ([]byte, error) {
+	// A distinct type with no methods, so marshaling it does not recurse.
+	type plain UpdateTaskRequest
+
+	data, err := json.Marshal(plain(t))
+	if err != nil {
+		return nil, err
+	}
+	if len(t.Clear) == 0 {
+		return data, nil
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+
+	for _, field := range t.Clear {
+		values, ok := clearValues[field]
+		if !ok {
+			return nil, fmt.Errorf("cannot clear unknown task field %q", field)
+		}
+		for key, value := range values {
+			encoded, err := json.Marshal(value)
+			if err != nil {
+				return nil, err
+			}
+			fields[key] = encoded
+		}
+	}
+
+	return json.Marshal(fields)
 }
 
 // Task is the basic object around which many operations in Asana are
