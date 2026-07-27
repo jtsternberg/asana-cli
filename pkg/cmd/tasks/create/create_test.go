@@ -14,6 +14,7 @@ import (
 	"github.com/timwehrle/asana/internal/prompter"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/timwehrle/asana/pkg/taskjson"
 )
 
 // explodingPrompter fails every prompt. Any test that uses it asserts the
@@ -597,5 +598,215 @@ func TestRunCreate_InvalidHTMLNotesFailsBeforeAnyRequest(t *testing.T) {
 	err := runCreate(opts)
 	if err == nil || !strings.Contains(err.Error(), "<p> is not allowed") {
 		t.Fatalf("expected an html-notes validation error, got %v", err)
+	}
+}
+
+// --- JSON output ---
+
+func TestNewCmdCreate_JSONFlag(t *testing.T) {
+	ios, _, _, _ := iostreams.Test()
+	var got *CreateOptions
+	cmd := NewCmdCreate(factory.Factory{IOStreams: ios}, func(opts *CreateOptions) error {
+		got = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--json", "-n", "Task"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !got.JSON {
+		t.Error("--json should set opts.JSON")
+	}
+}
+
+// createdTask is a task as Asana returns it from POST /tasks with the canonical
+// field list.
+func createdTask() *asana.Task {
+	task := &asana.Task{
+		ID:           "1216927015880615",
+		Assignee:     &asana.User{ID: "580196049969505", Name: "Justin Sternberg"},
+		Workspace:    &asana.Workspace{ID: "W1", Name: "awesomemotive.com"},
+		CreatedAt:    func() *time.Time { t, _ := time.Parse(time.RFC3339, "2026-07-27T18:03:02Z"); return &t }(),
+		PermalinkURL: "https://app.asana.com/1/W1/task/1216927015880615",
+	}
+	task.Name = "Ship the thing"
+	task.Notes = "Probe with a https://example.com"
+	task.HTMLNotes = `<body>Probe with a <a href="https://example.com">link</a></body>`
+	task.Completed = new(bool)
+	return task
+}
+
+// The hard requirement: create --json must be byte-identical to what view --json
+// produces for the same task, so one parser handles create-then-verify and any
+// later re-fetch.
+func TestDisplayCreated_JSONIsIdenticalToTheCanonicalShape(t *testing.T) {
+	task := createdTask()
+
+	ios, _, out, _ := iostreams.Test()
+	if err := displayCreated(ios, createOutcome{Task: task, AssigneeName: "Justin Sternberg"}, true); err != nil {
+		t.Fatalf("displayCreated: %v", err)
+	}
+
+	var want strings.Builder
+	if err := taskjson.Write(&want, task); err != nil {
+		t.Fatalf("taskjson.Write: %v", err)
+	}
+
+	if out.String() != want.String() {
+		t.Errorf("create --json differs from the canonical shape:\ngot:\n%s\nwant:\n%s", out.String(), want.String())
+	}
+}
+
+func TestDisplayCreated_JSONHasNoProseAroundIt(t *testing.T) {
+	ios, _, out, errOut := iostreams.Test()
+	outcome := createOutcome{
+		Task:          createdTask(),
+		AssigneeName:  "Justin Sternberg",
+		NotesKind:     "markdown",
+		NotesLength:   64,
+		FollowerNames: []string{"Alice"},
+		DueKeyword:    "today",
+	}
+	if err := displayCreated(ios, outcome, true); err != nil {
+		t.Fatalf("displayCreated: %v", err)
+	}
+
+	got := out.String()
+	if !strings.HasPrefix(got, "{") {
+		t.Errorf("output should start with the JSON object; got:\n%s", got)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(got), &parsed); err != nil {
+		t.Fatalf("output is not a single JSON document: %v\n%s", err, got)
+	}
+	if parsed["id"] != "1216927015880615" {
+		t.Errorf("id = %v", parsed["id"])
+	}
+	// The GID is the reason --json exists: no scraping a URL line for it.
+	if strings.Contains(got, "Created task") || strings.Contains(got, "URL:") {
+		t.Errorf("JSON output should carry no prose; got:\n%s", got)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("nothing should go to stderr; got %q", errOut.String())
+	}
+}
+
+// The rich-text description is the copy that outlives the task, so it has to be
+// in the JSON and it has to be readable.
+func TestDisplayCreated_JSONCarriesReadableHTMLNotes(t *testing.T) {
+	ios, _, out, _ := iostreams.Test()
+	if err := displayCreated(ios, createOutcome{Task: createdTask()}, true); err != nil {
+		t.Fatalf("displayCreated: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, `<a href=\"https://example.com\">`) {
+		t.Errorf("html_notes should be unescaped; got:\n%s", got)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(got), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if parsed["html_notes"] != `<body>Probe with a <a href="https://example.com">link</a></body>` {
+		t.Errorf("html_notes = %v", parsed["html_notes"])
+	}
+}
+
+func TestDisplayCreated_TextSummary(t *testing.T) {
+	ios, _, out, _ := iostreams.Test()
+	outcome := createOutcome{
+		Task:          createdTask(),
+		AssigneeName:  "Justin Sternberg",
+		NotesKind:     "markdown",
+		NotesLength:   64,
+		FollowerNames: []string{"Alice", "Bob"},
+	}
+	outcome.Task.DueOn = makeDate(t, "2026-07-28")
+	outcome.DueKeyword = "tomorrow"
+
+	if err := displayCreated(ios, outcome, false); err != nil {
+		t.Fatalf("displayCreated: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"Created task", "Ship the thing", "Justin Sternberg",
+		"rich text (markdown, 64 chars)", "Alice, Bob", "tomorrow",
+		"https://app.asana.com/1/W1/task/1216927015880615",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output should contain %q; got:\n%s", want, got)
+		}
+	}
+}
+
+func TestDisplayCreated_TextReportsAbsences(t *testing.T) {
+	ios, _, out, _ := iostreams.Test()
+	if err := displayCreated(ios, createOutcome{Task: createdTask(), NoProject: true}, false); err != nil {
+		t.Fatalf("displayCreated: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "unassigned") {
+		t.Errorf("an empty assignee should read as unassigned; got:\n%s", got)
+	}
+	if !strings.Contains(got, "workspace-level task") {
+		t.Errorf("--no-project should be confirmed; got:\n%s", got)
+	}
+}
+
+func makeDate(t *testing.T, s string) *asana.Date {
+	t.Helper()
+	parsed, err := time.Parse(time.DateOnly, s)
+	if err != nil {
+		t.Fatalf("bad date %q: %v", s, err)
+	}
+	d := asana.Date(parsed)
+	return &d
+}
+
+// --dry-run --json is how a caller checks the payload it is about to send from a
+// script, so it has to be the payload and nothing else.
+func TestRunCreate_DryRunJSONEmitsOnlyThePayload(t *testing.T) {
+	ios, _, out, _ := iostreams.Test()
+
+	opts := &CreateOptions{
+		IO:            ios,
+		Name:          "Ship the thing",
+		Unassigned:    true,
+		NoProject:     true,
+		DryRun:        true,
+		JSON:          true,
+		MarkdownNotes: "a [link](https://example.com)",
+		Config: func() (*config.Config, error) {
+			return &config.Config{Workspace: &asana.Workspace{ID: "W1", Name: "WS"}}, nil
+		},
+		Client: func() (*asana.Client, error) { return &asana.Client{}, nil },
+	}
+
+	if err := runCreate(opts); err != nil {
+		t.Fatalf("runCreate: %v", err)
+	}
+
+	got := out.String()
+	if !strings.HasPrefix(got, "{") {
+		t.Fatalf("output should be bare JSON; got:\n%s", got)
+	}
+	if strings.Contains(got, "no request was made") || strings.Contains(got, "Would send") {
+		t.Errorf("--json should suppress the prose; got:\n%s", got)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(got), &payload); err != nil {
+		t.Fatalf("payload is not valid JSON: %v\n%s", err, got)
+	}
+	if payload["name"] != "Ship the thing" || payload["workspace"] != "W1" {
+		t.Errorf("payload = %v", payload)
+	}
+	if payload["html_notes"] != `<body>a <a href="https://example.com">link</a></body>` {
+		t.Errorf("html_notes = %v", payload["html_notes"])
 	}
 }

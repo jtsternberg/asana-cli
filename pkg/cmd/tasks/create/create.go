@@ -16,6 +16,7 @@ import (
 	"github.com/timwehrle/asana/pkg/format"
 	"github.com/timwehrle/asana/pkg/htmlnotes"
 	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/timwehrle/asana/pkg/taskjson"
 )
 
 type CreateOptions struct {
@@ -37,6 +38,7 @@ type CreateOptions struct {
 	NoProject      bool
 	NonInteractive bool
 	DryRun         bool
+	JSON           bool
 
 	// assigneeFlagSet records whether --assignee appeared on the command line at
 	// all, which is the only way to tell `-a ""` ("clear the assignee") apart
@@ -110,10 +112,22 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 			h1 h2 hr img. --html-notes is checked against those rules locally,
 			before any request is made. <a data-asana-gid="123"/> becomes an
 			@-mention.
+
+			--json prints the created task in exactly the shape
+			` + "`" + `tasks view --json` + "`" + ` uses, so one parser handles both the
+			create and any later re-fetch of the same task. There is no need to
+			scrape the URL line for the new ID. With --dry-run it prints just the
+			request payload, with no prose around it.
 		`),
 		Example: heredoc.Doc(`
 			# Rehearse: resolve assignee, project and section, print the request, create nothing
 			$ asana tasks create --dry-run -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes @notes.md
+
+			# Machine-readable: record the new task's ID without scraping stdout
+			$ asana tasks create --json -n "Ship the thing" -a me -p "Outgoing Tasks" | jq -r .id
+
+			# Just the request payload, no prose
+			$ asana tasks create --dry-run --json -n "Ship the thing" -a me -p "Outgoing Tasks"
 
 			# Unassigned, matching a section whose tasks are all unassigned
 			$ asana tasks create -n "Ship the thing" --unassigned -p "Outgoing Tasks" -s "Untitled section"
@@ -161,6 +175,7 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().BoolVar(&opts.NoProject, "no-project", false, "Create the task in the workspace only, with no project or section")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve everything and print the request without creating the task")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format, identical to `tasks view --json`")
 
 	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
 	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
@@ -179,7 +194,6 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 }
 
 func runCreate(opts *CreateOptions) error {
-	cs := opts.IO.ColorScheme()
 	ni := opts.isNonInteractive()
 
 	// Resolve and validate rich-text notes first: it needs no network access,
@@ -287,44 +301,99 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	if opts.DryRun {
+		if opts.JSON {
+			return taskjson.Encode(opts.IO.Out, req)
+		}
 		return cmdutils.PrintDryRun(opts.IO, "POST /tasks", req)
 	}
 
-	task, err := client.CreateTask(req)
+	// Ask for the canonical field list on the way out: POST /tasks otherwise
+	// returns Asana's default fields, which leave out html_notes and every other
+	// opt-in field, and --json has to match `tasks view --json`.
+	task, err := client.CreateTask(req, taskjson.Options())
 	if err != nil {
 		return fmt.Errorf("error creating task: %w", err)
 	}
 
-	opts.IO.Printf("%s Created task %s\n", cs.SuccessIcon, cs.Bold(task.Name))
-	// Always print the assignee line, including when there is none: "unassigned"
-	// is a result worth confirming, not an absence to leave the reader guessing at.
-	if assignee != nil {
-		opts.IO.Printf("  %s %s\n", cs.Gray("Assignee:"), assignee.Name)
-	} else {
-		opts.IO.Printf("  %s unassigned\n", cs.Gray("Assignee:"))
+	outcome := createOutcome{
+		Task:          task,
+		NoProject:     project == nil,
+		FollowerNames: followerNames,
+		DueKeyword:    dueDateKeyword(opts.Due),
 	}
-	if project == nil {
-		opts.IO.Printf("  %s none (workspace-level task)\n", cs.Gray("Project:"))
+	if assignee != nil {
+		outcome.AssigneeName = assignee.Name
 	}
 	if htmlNotes != "" {
-		kind := "html"
+		outcome.NotesKind = "html"
 		if opts.MarkdownNotes != "" {
-			kind = "markdown"
+			outcome.NotesKind = "markdown"
 		}
-		opts.IO.Printf("  %s rich text (%s, %d chars)\n", cs.Gray("Description:"), kind, len(htmlNotes))
+		outcome.NotesLength = len(htmlNotes)
 	}
-	if len(followerNames) > 0 {
-		opts.IO.Printf("  %s %s\n", cs.Gray("Followers:"), strings.Join(followerNames, ", "))
+
+	return displayCreated(opts.IO, outcome, opts.JSON)
+}
+
+// createOutcome is everything the human summary reports about a task that was
+// just created. Bundling it is what makes rendering testable: runCreate needs a
+// live *asana.Client and cannot be driven end to end, so the rendering lives in
+// its own function, the way view.go splits out displayDetails.
+type createOutcome struct {
+	Task *asana.Task
+
+	// AssigneeName is empty when the task was created unassigned.
+	AssigneeName string
+	// NoProject records a workspace-level task, which is worth confirming rather
+	// than leaving as an absence the reader has to notice.
+	NoProject bool
+	// NotesKind is "html" or "markdown" when a rich-text description was given,
+	// and empty for a plain or absent one. NotesLength is its size in characters.
+	NotesKind   string
+	NotesLength int
+
+	FollowerNames []string
+	// DueKeyword is "today" or "tomorrow" when that is how --due was expressed.
+	DueKeyword string
+}
+
+func displayCreated(io *iostreams.IOStreams, outcome createOutcome, jsonOutput bool) error {
+	if jsonOutput {
+		return taskjson.Write(io.Out, outcome.Task)
+	}
+	return displayCreatedText(io, outcome)
+}
+
+func displayCreatedText(io *iostreams.IOStreams, outcome createOutcome) error {
+	cs := io.ColorScheme()
+	task := outcome.Task
+
+	io.Printf("%s Created task %s\n", cs.SuccessIcon, cs.Bold(task.Name))
+	// Always print the assignee line, including when there is none: "unassigned"
+	// is a result worth confirming, not an absence to leave the reader guessing at.
+	if outcome.AssigneeName != "" {
+		io.Printf("  %s %s\n", cs.Gray("Assignee:"), outcome.AssigneeName)
+	} else {
+		io.Printf("  %s unassigned\n", cs.Gray("Assignee:"))
+	}
+	if outcome.NoProject {
+		io.Printf("  %s none (workspace-level task)\n", cs.Gray("Project:"))
+	}
+	if outcome.NotesKind != "" {
+		io.Printf("  %s rich text (%s, %d chars)\n", cs.Gray("Description:"), outcome.NotesKind, outcome.NotesLength)
+	}
+	if len(outcome.FollowerNames) > 0 {
+		io.Printf("  %s %s\n", cs.Gray("Followers:"), strings.Join(outcome.FollowerNames, ", "))
 	}
 	if task.DueOn != nil {
 		dueStr := format.Date(task.DueOn)
-		if keyword := dueDateKeyword(opts.Due); keyword != "" {
-			dueStr = fmt.Sprintf("%s (%s)", dueStr, keyword)
+		if outcome.DueKeyword != "" {
+			dueStr = fmt.Sprintf("%s (%s)", dueStr, outcome.DueKeyword)
 		}
-		opts.IO.Printf("  %s %s\n", cs.Gray("Due:"), dueStr)
+		io.Printf("  %s %s\n", cs.Gray("Due:"), dueStr)
 	}
 	if task.PermalinkURL != "" {
-		opts.IO.Printf("  %s %s\n", cs.Gray("URL:"), task.PermalinkURL)
+		io.Printf("  %s %s\n", cs.Gray("URL:"), task.PermalinkURL)
 	}
 
 	return nil

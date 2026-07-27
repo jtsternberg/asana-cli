@@ -462,12 +462,15 @@ func (t *Task) Subtasks(client *Client, opts ...*Options) ([]*Task, *NextPage, e
 }
 
 // CreateTask creates a new task in the given project
-func (c *Client) CreateTask(task *CreateTaskRequest) (*Task, error) {
+// CreateTask creates a new task. Options are honored, so a caller can ask for the
+// fields it needs on the created record: POST /tasks otherwise returns Asana's
+// default field set, which omits every opt-in field including html_notes.
+func (c *Client) CreateTask(task *CreateTaskRequest, opts ...*Options) (*Task, error) {
 	c.info("Creating task %q", task.Name)
 
 	result := &Task{}
 
-	err := c.post("/tasks", task, result)
+	err := c.post("/tasks", task, result, opts...)
 	return result, err
 }
 
