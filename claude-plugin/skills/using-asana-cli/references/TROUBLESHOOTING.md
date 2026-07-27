@@ -23,6 +23,8 @@ asana --version
 
 Ensure you're running the fork with non-interactive support (version should show `dev` or include `--project` flag in `asana tasks create --help`).
 
+> **Do not run `asana upgrade` if the version has a `-g<sha>` suffix** (e.g. `v3.3.2-10-g117d35c`) or reads `dev`. That means a locally built binary, usually newer than any release. `asana upgrade` downloads the latest *release* and overwrites it, so you would silently move **backwards** and lose whatever you were testing. Verify a suspected-stale binary with `asana tasks create --help` instead — if the flag you need is listed, the binary is fine.
+
 ## 3. Common Errors
 
 | Error | Cause | Fix |
