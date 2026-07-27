@@ -84,6 +84,26 @@ Required values must then come from flags (a missing one is an error naming the 
 asana tasks create --help
 ```
 
+### Who gets the task? Assignee precedence
+
+**Only `--name` is genuinely mandatory.** Asana accepts a task with no assignee and a task with no project, and the CLI expresses those as `--unassigned` (or `--assignee ""`) and `--no-project`. Both are explicit on purpose: *omitting* `--assignee` or `--project` is still an error, so a script that forgot one can't quietly produce an ownerless or unfindable task.
+
+When the user doesn't name an assignee, work down this list — do **not** default to `me`:
+
+1. **They named someone** → `--assignee "Name"`.
+2. **They claimed it** ("assign to me", "I'll take this", "mine") → `--assignee me`.
+3. **They named nobody, and the destination has an obvious convention** → follow the convention and say that you did. Check before you guess:
+   ```bash
+   asana projects tasks "Outgoing Tasks" --sections --json \
+     | jq -r '.[] | select(.section == "Untitled section") | .tasks[] | "\(.name) :: \(.assignee.name // "unassigned")"'
+   ```
+   All unassigned → `--unassigned`. All the same person → that's a hint, not a mandate; prefer asking unless the request makes the owner obvious.
+4. **Nothing said, no clear convention** → ask. One question, with your recommendation attached.
+
+Beware the ambiguity in "create a task for me": it can mean *assign it to me* or *do this on my behalf*. If the rest of the request doesn't settle it, item 3 usually does — a task destined for someone else's queue is rarely meant to be assigned to the requester.
+
+`--no-project` is for a task that belongs in the workspace and nowhere else. It cannot be combined with `--project` or `--section`. Be aware that unassigned **and** project-less together makes a task that is genuinely hard to find again; if you're reaching for both, check that's really what was wanted.
+
 ### Update a task (non-interactive)
 
 Pass a task ID as the first argument to use flags. A task ID is **required** whenever prompts are unavailable (no terminal on stdin, or `--non-interactive`) — without one the command fails with a message saying so, rather than hanging or erroring on EOF.
@@ -381,6 +401,9 @@ When the user describes an action in natural language, translate it to the corre
 | "due next Friday" | `--due 2026-04-03` | CLI only supports `today`, `tomorrow`, or `YYYY-MM-DD` — you must compute this one |
 | "assign to me" / "I'll take this" | `--assignee me` | |
 | "assign to Chris" | `--assignee "Chris"` | Name matching works on create, update, AND search |
+| no assignee named at all | see "Assignee precedence" | Don't default to `me`; check the destination's convention first |
+| "leave it unassigned" / "nobody owns it yet" | `--unassigned` | Or `--assignee ""`. **Not** `-a "none"` — that would partial-match a real person |
+| "just a note, not for any project" | `--no-project` | Workspace-level task; can't combine with `-p`/`-s` |
 | "find Tom's tasks" / "search Tom's stuff" | `--assignee "Tom"` | Search resolves names to IDs automatically |
 | "tasks in Tom's section" / "the Tom column" / "what's in the Tom section" | `projects tasks <project> --sections` + filter by section name | A **section** named after a person is NOT the same as its assignee. See "List tasks in a specific SECTION". Do not translate this to `--assignee`. |
 | "find the outgoing project" / "which project is X in?" | `asana projects list -q "outgoing"` | Uses typeahead API — no 100-project ceiling |
@@ -406,7 +429,7 @@ Reads deserve the same rigor as writes. When you search, filter, or count tasks:
 
 After ANY create, update, or delete operation, you MUST verify the result:
 
-1. **Read the CLI output carefully** — it confirms what was actually set (name, assignee, due date, followers, URL)
+1. **Read the CLI output carefully** — it confirms what was actually set (name, assignee, due date, followers, URL). The assignee line is always printed, `Assignee: unassigned` included, so absence is confirmed rather than inferred from a missing line
 2. **Check for missing fields** — if you requested a due date but the output doesn't show one, the operation failed silently
 3. **Due date keyword confirmation** — when you pass `--due today`, the output shows the resolved date with the keyword in parentheses, e.g. `Due: Apr 1, 2026 (today)`. Verify this matches your intent.
 4. **Rich text confirmation** — when you pass `--markdown-notes` or `--html-notes`, the output includes a `Description: rich text (markdown, 163 chars)` line. No such line means the description was not set as rich text.
