@@ -2,8 +2,12 @@ package asana
 
 import (
 	"encoding/json"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/h2non/gock"
 )
 
 // Every clearable field must round-trip to the exact JSON Asana needs to blank
@@ -94,6 +98,35 @@ func TestUpdateTaskRequest_MarshalJSON_OmitsClearItself(t *testing.T) {
 	}
 	if strings.Contains(string(got), "Clear") || strings.Contains(string(got), `"clear"`) {
 		t.Fatalf("payload leaks the Clear list: %s", got)
+	}
+}
+
+func TestTask_RemoveFollowers(t *testing.T) {
+	defer gock.Off()
+
+	var sentBody []byte
+	gock.Observe(func(req *http.Request, _ gock.Mock) {
+		if req.Body != nil {
+			sentBody, _ = io.ReadAll(req.Body)
+		}
+	})
+	defer gock.Observe(nil)
+
+	gock.New("https://app.asana.com").
+		Post("/api/1.0/tasks/123/removeFollowers").
+		Reply(200).
+		JSON(map[string]any{"data": map[string]any{"gid": "123"}})
+
+	task := &Task{ID: "123"}
+	if err := task.RemoveFollowers(NewClient(http.DefaultClient), []string{"u1", "u2"}); err != nil {
+		t.Fatalf("RemoveFollowers() error = %v", err)
+	}
+	if !gock.IsDone() {
+		t.Fatal("expected a POST to /tasks/123/removeFollowers")
+	}
+	// The client always attaches an options object, empty or not.
+	if got, want := string(sentBody), `{"data":{"followers":["u1","u2"]},"options":{}}`; got != want {
+		t.Fatalf("request body = %s; want %s", got, want)
 	}
 }
 

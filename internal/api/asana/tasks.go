@@ -378,6 +378,18 @@ func (t *Task) AddFollowers(client *Client, followerIDs []string) error {
 	return client.post(fmt.Sprintf("/tasks/%s/addFollowers", t.ID), &AddFollowersRequest{Followers: followerIDs}, t)
 }
 
+type RemoveFollowersRequest struct {
+	Followers []string `json:"followers"`
+}
+
+// RemoveFollowers unfollows the given users from this task. Followers cannot be
+// changed through the task update body -- add and remove are each their own
+// endpoint -- which is why this is not expressible as a cleared field.
+func (t *Task) RemoveFollowers(client *Client, followerIDs []string) error {
+	client.trace("Removing followers from task %q", t.Name)
+	return client.post(fmt.Sprintf("/tasks/%s/removeFollowers", t.ID), &RemoveFollowersRequest{Followers: followerIDs}, t)
+}
+
 func (t *Task) Delete(client *Client) error {
 	client.info("Deleting task %q", t.Name)
 

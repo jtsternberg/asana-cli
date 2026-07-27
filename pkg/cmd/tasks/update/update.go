@@ -50,21 +50,22 @@ type UpdateOptions struct {
 	Client func() (*asana.Client, error)
 
 	// Non-interactive flags
-	TaskID         string
-	Name           string
-	Description    string
-	HTMLNotes      string
-	MarkdownNotes  string
-	Due            string
-	Assignee       string
-	Followers      []string
-	Complete       bool
-	Incomplete     bool
-	Unassigned     bool
-	NoDue          bool
-	NoDescription  bool
-	NonInteractive bool
-	DryRun         bool
+	TaskID          string
+	Name            string
+	Description     string
+	HTMLNotes       string
+	MarkdownNotes   string
+	Due             string
+	Assignee        string
+	Followers       []string
+	RemoveFollowers []string
+	Complete        bool
+	Incomplete      bool
+	Unassigned      bool
+	NoDue           bool
+	NoDescription   bool
+	NonInteractive  bool
+	DryRun          bool
 
 	// Whether each value flag appeared on the command line at all. Passing one
 	// explicitly empty (-a "") means "clear this"; omitting it means "leave it
@@ -128,6 +129,10 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 			--assignee "" and --unassigned are equivalent. Omitting a flag
 			entirely still means "leave this alone".
 
+			Followers are the exception to that shape: Asana changes them
+			through their own endpoints rather than the task body, so use
+			--followers to add and --remove-followers to unfollow.
+
 			A new description can be given in one of three mutually exclusive
 			forms: --description for plain text, --markdown-notes for Markdown,
 			or --html-notes for Asana-flavored HTML. Either of the latter two
@@ -184,6 +189,7 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Due, "due", "d", "", "New due date (YYYY-MM-DD, 'today', 'tomorrow')")
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "New assignee name or 'me'")
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs to add")
+	cmd.Flags().StringSliceVar(&opts.RemoveFollowers, "remove-followers", nil, "Comma-separated follower names or IDs to unfollow")
 	cmd.Flags().BoolVar(&opts.Complete, "complete", false, "Mark task as completed")
 	cmd.Flags().BoolVar(&opts.Incomplete, "incomplete", false, "Reopen the task, marking it not completed")
 	cmd.Flags().BoolVar(&opts.Unassigned, "unassigned", false, `Remove the assignee, leaving the task unassigned (same as --assignee "")`)
@@ -277,8 +283,18 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 		changes = append(changes, "followers")
 	}
 
+	var removeFollowerIDs []string
+	if len(opts.RemoveFollowers) > 0 {
+		var err error
+		removeFollowerIDs, _, err = resolveFollowerIDs(opts.RemoveFollowers, cfg, ws.ID, client)
+		if err != nil {
+			return err
+		}
+		changes = append(changes, "followers removed")
+	}
+
 	if len(changes) == 0 {
-		return fmt.Errorf("no updates specified; use flags like --name, --due, --complete, --assignee, --followers, --markdown-notes")
+		return fmt.Errorf("no updates specified; use flags like --name, --due, --complete, --assignee, --followers, --markdown-notes, or a clearing flag such as --unassigned, --no-due, --no-description, --incomplete")
 	}
 
 	if opts.DryRun {
@@ -301,10 +317,16 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 		}
 	}
 
-	// Add followers via separate endpoint
+	// Followers are their own endpoints, one per direction — they cannot ride
+	// along in the update body.
 	if len(followerIDs) > 0 {
 		if err := task.AddFollowers(client, followerIDs); err != nil {
 			return fmt.Errorf("failed to add followers: %w", err)
+		}
+	}
+	if len(removeFollowerIDs) > 0 {
+		if err := task.RemoveFollowers(client, removeFollowerIDs); err != nil {
+			return fmt.Errorf("failed to remove followers: %w", err)
 		}
 	}
 
