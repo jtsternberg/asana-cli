@@ -93,12 +93,37 @@ func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) 
 	return cmd, nil
 }
 
-// isNoAuthCommand checks if the command being run does not need authentication
-// (auth and upgrade commands are exempt from the auth check).
+// isNoAuthCommand reports whether an invocation must run without a token or a
+// config file.
+//
+// `auth`, `upgrade` and `completion` manage the credential or the binary itself,
+// so they cannot require a working one. Version and help are pure local output:
+// an install script, a container health check and "what have I got installed"
+// all reach for them first, and advice to run `asana upgrade` is useless if the
+// user cannot read their current version. A bare `asana` prints help, so it
+// belongs here too.
+//
+// The flag scan cannot distinguish `--help` as a request for help from `--help`
+// as an argument value. Exempting either is the safe direction: the command
+// still runs and fails on its own terms, whereas wrongly demanding auth would
+// block a legitimate help request.
 func isNoAuthCommand(args []string) bool {
+	// A bare `asana`, which prints help.
 	if len(args) < 2 {
-		return false
+		return true
 	}
-	return args[1] == "auth" || args[1] == "upgrade"
-}
 
+	switch args[1] {
+	case "auth", "upgrade", "completion", "help":
+		return true
+	}
+
+	for _, arg := range args[1:] {
+		switch arg {
+		case "--version", "-v", "--help", "-h":
+			return true
+		}
+	}
+
+	return false
+}
