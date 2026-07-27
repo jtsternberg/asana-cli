@@ -432,6 +432,11 @@ When the user describes an action in natural language, translate it to the corre
 | "tasks in Tom's section" / "the Tom column" / "what's in the Tom section" | `projects tasks <project> --sections` + filter by section name | A **section** named after a person is NOT the same as its assignee. See "List tasks in a specific SECTION". Do not translate this to `--assignee`. |
 | "find the outgoing project" / "which project is X in?" | `asana projects list -q "outgoing"` | Uses typeahead API — no 100-project ceiling |
 | "mark it done" / "complete this" | `--complete` | Update command only |
+| "reopen it" / "that's not done after all" | `--incomplete` | Update command only |
+| "unassign it" / "take Chris off it" | `tasks update <id> --unassigned` | Or `-a ""`. Clears the assignee outright |
+| "drop the due date" / "no deadline anymore" | `tasks update <id> --no-due` | Or `-d ""` |
+| "clear the description" | `tasks update <id> --no-description` | Or `-m ""` |
+| "stop following" / "remove Tom as a follower" | `tasks update <id> --remove-followers "Tom"` | Followers have their own endpoints; not an empty `--followers` |
 | "move it to Project X" | `asana tasks move <task-id>` | Don't delete and recreate |
 | description has a list, a link, or bold text | `--markdown-notes "..."` | **Not** `-m`. `-m` is plain text and leaves `**bold**` literal. |
 | "link the words X to this URL" | `--markdown-notes "... [X](url) ..."` | Anchoring a link on specific words needs rich text |
