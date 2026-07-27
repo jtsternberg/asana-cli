@@ -3,8 +3,8 @@ package cmdutils
 import (
 	"fmt"
 
-	"github.com/timwehrle/asana/internal/auth"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/internal/auth"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 // WarnEnvTokenBeforeStore warns that a token in the environment takes

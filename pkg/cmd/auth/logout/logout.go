@@ -3,13 +3,13 @@ package logout
 import (
 	"fmt"
 
-	"github.com/timwehrle/asana/pkg/cmdutils"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/cmdutils"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/jtsternberg/asana-cli/internal/auth"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/internal/auth"
 )
 
 type LogoutOptions struct {

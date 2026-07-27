@@ -4,15 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/AlecAivazis/survey/v2/terminal"
-	"github.com/timwehrle/asana/internal/build"
-	"github.com/timwehrle/asana/pkg/cmdutils"
+	"github.com/jtsternberg/asana-cli/internal/build"
+	"github.com/jtsternberg/asana-cli/pkg/cmdutils"
 	"strings"
 
 	surveyCore "github.com/AlecAivazis/survey/v2/core"
+	"github.com/jtsternberg/asana-cli/internal/auth"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/root"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/mgutz/ansi"
-	"github.com/timwehrle/asana/internal/auth"
-	"github.com/timwehrle/asana/pkg/cmd/root"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 type ExitCode int

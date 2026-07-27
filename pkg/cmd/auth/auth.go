@@ -2,12 +2,12 @@ package auth
 
 import (
 	"github.com/MakeNowJust/heredoc"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/auth/login"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/auth/logout"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/auth/status"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/auth/update"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/pkg/cmd/auth/login"
-	"github.com/timwehrle/asana/pkg/cmd/auth/logout"
-	"github.com/timwehrle/asana/pkg/cmd/auth/status"
-	"github.com/timwehrle/asana/pkg/cmd/auth/update"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 func NewCmdAuth(f factory.Factory) *cobra.Command {

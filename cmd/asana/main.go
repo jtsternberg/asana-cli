@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/timwehrle/asana/pkg/cmd"
+	"github.com/jtsternberg/asana-cli/pkg/cmd"
 )
 
 func main() {

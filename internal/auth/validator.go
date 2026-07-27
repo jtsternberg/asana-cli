@@ -3,7 +3,7 @@ package auth
 import (
 	"fmt"
 
-	"github.com/timwehrle/asana/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 )
 
 type AuthenticationError struct {

@@ -1,16 +1,16 @@
 package tasks
 
 import (
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/comments"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/create"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/delete"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/list"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/move"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/search"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/update"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/view"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/comments"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/create"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/delete"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/list"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/move"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/search"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/update"
-	"github.com/timwehrle/asana/pkg/cmd/tasks/view"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 func NewCmdTasks(f factory.Factory) *cobra.Command {

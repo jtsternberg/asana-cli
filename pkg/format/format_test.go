@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timwehrle/asana/pkg/format"
+	"github.com/jtsternberg/asana-cli/pkg/format"
 
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/stretchr/testify/assert"
-	"github.com/timwehrle/asana/internal/api/asana"
 )
 
 type mockStruct struct {

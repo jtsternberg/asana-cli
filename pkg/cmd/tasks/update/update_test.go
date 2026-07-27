@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/h2non/gock"
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 func TestNewCmdUpdate_RichNotesFlags(t *testing.T) {

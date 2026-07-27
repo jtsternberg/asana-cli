@@ -3,11 +3,11 @@ package delete
 import (
 	"fmt"
 
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/pkg/cmdutils"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/format"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/pkg/cmdutils"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/format"
 )
 
 type DeleteOptions struct {

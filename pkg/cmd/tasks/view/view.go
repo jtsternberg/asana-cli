@@ -5,17 +5,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/internal/prompter"
+	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/internal/prompter"
 
 	"github.com/MakeNowJust/heredoc"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/format"
-	"github.com/timwehrle/asana/pkg/iostreams"
-	"github.com/timwehrle/asana/pkg/taskjson"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/format"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/taskjson"
 
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/internal/api/asana"
 )
 
 type ViewOptions struct {

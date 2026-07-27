@@ -1,4 +1,4 @@
-module github.com/timwehrle/asana
+module github.com/jtsternberg/asana-cli
 
 go 1.25.0
 

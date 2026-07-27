@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 // PrintDryRun renders the request a command would have sent and reports that

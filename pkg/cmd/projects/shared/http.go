@@ -1,6 +1,6 @@
 package shared
 
-import "github.com/timwehrle/asana/internal/api/asana"
+import "github.com/jtsternberg/asana-cli/internal/api/asana"
 
 const maxPageSize = 100
 

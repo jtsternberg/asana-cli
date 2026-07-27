@@ -1,11 +1,11 @@
 package factory
 
 import (
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/internal/auth"
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/internal/prompter"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/auth"
+	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/internal/prompter"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 type Factory struct {

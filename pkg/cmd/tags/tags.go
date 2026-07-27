@@ -1,10 +1,10 @@
 package tags
 
 import (
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tags/list"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tags/tasks"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/pkg/cmd/tags/list"
-	"github.com/timwehrle/asana/pkg/cmd/tags/tasks"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 func NewCmdTags(f factory.Factory) *cobra.Command {

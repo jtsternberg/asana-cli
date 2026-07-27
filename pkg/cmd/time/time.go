@@ -1,11 +1,11 @@
 package time
 
 import (
+	"github.com/jtsternberg/asana-cli/pkg/cmd/time/create"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/time/delete"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/time/status"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/pkg/cmd/time/create"
-	"github.com/timwehrle/asana/pkg/cmd/time/delete"
-	"github.com/timwehrle/asana/pkg/cmd/time/status"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 func NewCmdTimer(f factory.Factory) *cobra.Command {

@@ -8,19 +8,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/timwehrle/asana/pkg/format"
+	"github.com/jtsternberg/asana-cli/pkg/format"
 
 	"github.com/MakeNowJust/heredoc"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/internal/prompter"
+	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/internal/prompter"
 
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/pkg/cmd/projects/shared"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
 const defaultPageSize = 100

@@ -18,16 +18,16 @@ import (
 	"time"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/jtsternberg/asana-cli/internal/build"
+	"github.com/jtsternberg/asana-cli/internal/prompter"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/internal/build"
-	"github.com/timwehrle/asana/internal/prompter"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
 const (
 	// githubOwner and githubRepo identify the release repository.
-	// Note: the Go module is github.com/timwehrle/asana but the releases live
+	// Note: the Go module is github.com/jtsternberg/asana-cli but the releases live
 	// in the jtsternberg/asana-cli repository (the fork that ships binaries).
 	githubOwner = "jtsternberg"
 	githubRepo  = "asana-cli"

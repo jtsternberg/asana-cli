@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/timwehrle/asana/internal/auth"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/internal/auth"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 func clearTokenEnv(t *testing.T) {

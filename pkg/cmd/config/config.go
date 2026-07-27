@@ -2,10 +2,10 @@ package config
 
 import (
 	"github.com/MakeNowJust/heredoc"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/config/get"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/config/set"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/pkg/cmd/config/get"
-	"github.com/timwehrle/asana/pkg/cmd/config/set"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 func NewCmdConfig(f factory.Factory) *cobra.Command {

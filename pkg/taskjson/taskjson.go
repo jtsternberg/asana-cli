@@ -15,7 +15,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/timwehrle/asana/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 )
 
 // Ref is a compact reference to another object.

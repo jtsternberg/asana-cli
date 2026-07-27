@@ -21,8 +21,8 @@ builds:
     main: ./cmd/asana
     ldflags:
       - "-s -w \
-        -X github.com/timwehrle/asana/internal/build.Version=v{{ .Version }} \
-        -X github.com/timwehrle/asana/internal/build.Date={{ .Date }}"
+        -X github.com/jtsternberg/asana-cli/internal/build.Version=v{{ .Version }} \
+        -X github.com/jtsternberg/asana-cli/internal/build.Date={{ .Date }}"
     goos:
       - linux
       - windows

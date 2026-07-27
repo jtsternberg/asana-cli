@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/timwehrle/asana/internal/api/asana"
 )
 
 const windows = "windows"

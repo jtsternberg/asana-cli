@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timwehrle/asana/pkg/convert"
+	"github.com/jtsternberg/asana-cli/pkg/convert"
 
-	"github.com/timwehrle/asana/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 )
 
 func TestToDate(t *testing.T) {

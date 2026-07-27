@@ -5,18 +5,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/internal/prompter"
+	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/internal/prompter"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/pkg/cmdutils"
+	"github.com/jtsternberg/asana-cli/pkg/convert"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/format"
+	"github.com/jtsternberg/asana-cli/pkg/htmlnotes"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/pkg/cmdutils"
-	"github.com/timwehrle/asana/pkg/convert"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/format"
-	"github.com/timwehrle/asana/pkg/htmlnotes"
-	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
 type UpdateAction int

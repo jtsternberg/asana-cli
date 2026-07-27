@@ -3,7 +3,7 @@ package sorting
 import (
 	"time"
 
-	"github.com/timwehrle/asana/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 )
 
 var TaskSort = struct {

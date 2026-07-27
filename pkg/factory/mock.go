@@ -2,9 +2,9 @@ package factory
 
 import (
 	"bytes"
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 // NewTestFactory returns a Factory prewired for tests,

@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/spf13/viper"
-	"github.com/timwehrle/asana/internal/api/asana"
 )
 
 type Config struct {

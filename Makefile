@@ -9,8 +9,8 @@ BUILD_DIR=build
 # No --dirty: the sha already identifies the build, and an unrelated untracked
 # file would otherwise pin "-dirty" on permanently, where it says nothing.
 VERSION := $(shell git describe --tags --always)
-LDFLAGS := -ldflags "-X github.com/timwehrle/asana/internal/build.Version=${VERSION} \
-					-X github.com/timwehrle/asana/internal/build.Date=${shell date -u +%Y-%m-%dT%H:%M:%SZ}"
+LDFLAGS := -ldflags "-X github.com/jtsternberg/asana-cli/internal/build.Version=${VERSION} \
+					-X github.com/jtsternberg/asana-cli/internal/build.Date=${shell date -u +%Y-%m-%dT%H:%M:%SZ}"
 
 # Commands
 GOCMD := go

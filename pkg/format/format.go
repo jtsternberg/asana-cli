@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 func MapToStrings[T any](items []*T, fn func(*T) string) []string {

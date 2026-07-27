@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/jtsternberg/asana-cli/pkg/format"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/pkg/format"
-	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
 // HelpSection represents a named section in the help output.

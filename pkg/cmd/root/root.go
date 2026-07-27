@@ -3,23 +3,23 @@ package root
 import (
 	"os"
 
-	"github.com/timwehrle/asana/pkg/cmd/teams"
-	"github.com/timwehrle/asana/pkg/cmd/time"
-	"github.com/timwehrle/asana/pkg/cmd/upgrade"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/teams"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/time"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/upgrade"
 
 	"github.com/MakeNowJust/heredoc"
-	"github.com/timwehrle/asana/pkg/cmd/tags"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tags"
 
+	service "github.com/jtsternberg/asana-cli/internal/auth"
+	"github.com/jtsternberg/asana-cli/internal/build"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/auth"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/config"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/users"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/workspaces"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/spf13/cobra"
-	service "github.com/timwehrle/asana/internal/auth"
-	"github.com/timwehrle/asana/internal/build"
-	"github.com/timwehrle/asana/pkg/cmd/auth"
-	"github.com/timwehrle/asana/pkg/cmd/config"
-	"github.com/timwehrle/asana/pkg/cmd/projects"
-	"github.com/timwehrle/asana/pkg/cmd/tasks"
-	"github.com/timwehrle/asana/pkg/cmd/users"
-	"github.com/timwehrle/asana/pkg/cmd/workspaces"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) {

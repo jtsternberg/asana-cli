@@ -3,7 +3,7 @@ package convert
 import (
 	"time"
 
-	"github.com/timwehrle/asana/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
 )
 
 func ToDate(dateStr string, layout string) (*asana.Date, error) {

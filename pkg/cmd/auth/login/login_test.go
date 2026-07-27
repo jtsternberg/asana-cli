@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/google/shlex"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/stretchr/testify/require"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
 func TestNewCmdLogin(t *testing.T) {

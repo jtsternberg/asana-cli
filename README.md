@@ -3,10 +3,10 @@
 A command-line interface for managing Asana tasks, projects, time tracking, and more — with both interactive and non-interactive (scriptable) modes.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Go Report Card](https://goreportcard.com/badge/github.com/timwehrle/asana)](https://goreportcard.com/report/github.com/timwehrle/asana)
+[![Go Report Card](https://goreportcard.com/badge/github.com/jtsternberg/asana-cli)](https://goreportcard.com/report/github.com/jtsternberg/asana-cli)
 
 > [!NOTE]
-> This is a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana) with extended features: non-interactive CLI support, `--json` output, `tasks delete`, `projects sections` (list + create), fuzzy name matching, self-update command, and a Claude Code plugin.
+> This is a maintained fork of [timwehrle/asana](https://github.com/timwehrle/asana) (archived upstream, May 2026) with extended features: non-interactive CLI support, `--json` output, `tasks delete`, `projects sections` (list + create), fuzzy name matching, self-update command, and a Claude Code plugin.
 
 ## Features
 

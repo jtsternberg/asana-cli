@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/internal/config"
-	"github.com/timwehrle/asana/internal/prompter"
-	"github.com/timwehrle/asana/pkg/factory"
-	"github.com/timwehrle/asana/pkg/iostreams"
-	"github.com/timwehrle/asana/pkg/taskjson"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/internal/prompter"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/taskjson"
 )
 
 // explodingPrompter fails every prompt. Any test that uses it asserts the

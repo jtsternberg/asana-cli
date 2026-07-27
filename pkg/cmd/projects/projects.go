@@ -1,11 +1,11 @@
 package projects
 
 import (
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/list"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/sections"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/tasks"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/spf13/cobra"
-	"github.com/timwehrle/asana/pkg/cmd/projects/list"
-	"github.com/timwehrle/asana/pkg/cmd/projects/sections"
-	"github.com/timwehrle/asana/pkg/cmd/projects/tasks"
-	"github.com/timwehrle/asana/pkg/factory"
 )
 
 func NewCmdProjects(f factory.Factory) *cobra.Command {

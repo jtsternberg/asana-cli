@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timwehrle/asana/internal/api/asana"
-	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
 // boolPtr is a test helper for creating *bool values.
@@ -37,8 +37,8 @@ func fullTask() *asana.Task {
 			ID:   "456",
 			Name: "Tom McFarlin",
 		},
-		CreatedAt:  makeTime("2026-03-01T10:00:00Z"),
-		ModifiedAt: makeTime("2026-04-07T15:30:00Z"),
+		CreatedAt:   makeTime("2026-03-01T10:00:00Z"),
+		ModifiedAt:  makeTime("2026-04-07T15:30:00Z"),
 		CompletedAt: makeTime("2026-04-08T12:00:00Z"),
 		Parent: &asana.Task{
 			ID: "888",
