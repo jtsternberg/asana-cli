@@ -58,8 +58,15 @@ type UpdateOptions struct {
 	NonInteractive bool
 }
 
+// isNonInteractive returns true when prompts should be suppressed: an explicit
+// --non-interactive, a task ID (which means the caller is driving by flags), or
+// stdin not being a terminal — with no tty there is nothing to prompt on, so
+// prompting could only ever fail with EOF.
 func (o *UpdateOptions) isNonInteractive() bool {
-	return o.NonInteractive || o.TaskID != ""
+	if o.NonInteractive || o.TaskID != "" {
+		return true
+	}
+	return o.IO != nil && !o.IO.IsStdinTTY
 }
 
 func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Command {
@@ -119,6 +126,10 @@ func runUpdate(opts *UpdateOptions) error {
 
 func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	cs := opts.IO.ColorScheme()
+
+	if opts.TaskID == "" {
+		return fmt.Errorf("a task ID is required when not running interactively: asana tasks update <task-id> [flags]")
+	}
 
 	cfg, err := opts.Config()
 	if err != nil {
