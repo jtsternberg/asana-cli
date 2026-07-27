@@ -32,3 +32,9 @@ go.work.sum
 .dolt/
 *.db
 .claude/scheduled_tasks.lock
+
+# Beads / Dolt files (added by bd init)
+.beads-credential-key
+.beads/proxieddb/
+/.claude/skills/beads
+/.codex
