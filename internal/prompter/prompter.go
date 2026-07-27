@@ -1,12 +1,24 @@
 package prompter
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 )
+
+// IsNoInput reports whether err means "there was nothing to read" rather than a
+// real failure — stdin was closed, empty, or not a terminal at all.
+//
+// Callers use it to let an *optional* prompt resolve to its blank default
+// instead of aborting the command. A user interrupt (Ctrl-C) is deliberately
+// NOT treated as no-input: that means "stop", not "no answer".
+func IsNoInput(err error) bool {
+	return err != nil && errors.Is(err, io.EOF)
+}
 
 type Prompter interface {
 	Input(prompt, defaultValue string) (string, error)

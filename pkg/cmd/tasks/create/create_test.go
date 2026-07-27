@@ -2,15 +2,65 @@ package create
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/timwehrle/asana/internal/api/asana"
 	"github.com/timwehrle/asana/internal/config"
+	"github.com/timwehrle/asana/internal/prompter"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
+
+// explodingPrompter fails every prompt. Any test that uses it asserts the
+// prompt is never reached.
+type explodingPrompter struct{ t *testing.T }
+
+func (p *explodingPrompter) Input(prompt, defaultValue string) (string, error) {
+	p.t.Fatalf("unexpected Input prompt: %q", prompt)
+	return "", nil
+}
+
+func (p *explodingPrompter) Confirm(prompt, defaultValue string) (bool, error) {
+	p.t.Fatalf("unexpected Confirm prompt: %q", prompt)
+	return false, nil
+}
+
+func (p *explodingPrompter) Token() (string, error) {
+	p.t.Fatal("unexpected Token prompt")
+	return "", nil
+}
+
+func (p *explodingPrompter) Select(message string, options []string) (int, error) {
+	p.t.Fatalf("unexpected Select prompt: %q", message)
+	return 0, nil
+}
+
+func (p *explodingPrompter) Editor(prompt, existingDescription string) (string, error) {
+	p.t.Fatalf("unexpected Editor prompt: %q", prompt)
+	return "", nil
+}
+
+// eofPrompter mimics a prompt running with no usable stdin: survey surfaces
+// io.EOF, wrapped by the prompter package.
+type eofPrompter struct{ prompter.Prompter }
+
+func (p *eofPrompter) Input(prompt, defaultValue string) (string, error) {
+	return "", fmt.Errorf("could not prompt: %w", io.EOF)
+}
+
+func (p *eofPrompter) Confirm(prompt, defaultValue string) (bool, error) {
+	return false, fmt.Errorf("could not prompt: %w", io.EOF)
+}
+
+func ttyIO() *iostreams.IOStreams {
+	io, _, _, _ := iostreams.Test()
+	io.IsStdinTTY = true
+	return io
+}
 
 func TestNewCmdCreate_RunE(t *testing.T) {
 	f, _, _ := factory.NewTestFactory()
@@ -141,7 +191,7 @@ func TestGetOrPromptDueDate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			opts := &CreateOptions{Due: tt.input}
 
-			got, err := getOrPromptDueDate(opts)
+			got, err := getOrPromptDueDate(opts, false)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -161,8 +211,199 @@ func TestGetOrPromptDueDate(t *testing.T) {
 func TestGetOrPromptDueDate_Invalid(t *testing.T) {
 	opts := &CreateOptions{Due: "not-a-date"}
 
-	_, err := getOrPromptDueDate(opts)
+	_, err := getOrPromptDueDate(opts, false)
 	if err == nil || !strings.Contains(err.Error(), "invalid due date") {
 		t.Fatalf("expected invalid-date error, got %v", err)
+	}
+}
+
+func TestNewCmdCreate_RichNotesFlags(t *testing.T) {
+	f, _, _ := factory.NewTestFactory()
+
+	var sawOpts *CreateOptions
+	cmd := NewCmdCreate(f, func(opts *CreateOptions) error {
+		sawOpts = opts
+		return nil
+	})
+
+	cmd.SetArgs([]string{
+		"--name", "My Task",
+		"--assignee", "me",
+		"--project", "P",
+		"--html-notes", "<body>hi</body>",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if sawOpts.HTMLNotes != "<body>hi</body>" {
+		t.Errorf("HTMLNotes = %q", sawOpts.HTMLNotes)
+	}
+
+	cmd = NewCmdCreate(f, func(opts *CreateOptions) error {
+		sawOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--name", "n", "--markdown-notes", "@notes.md"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if sawOpts.MarkdownNotes != "@notes.md" {
+		t.Errorf("MarkdownNotes = %q", sawOpts.MarkdownNotes)
+	}
+}
+
+func TestNewCmdCreate_NotesFlagsAreMutuallyExclusive(t *testing.T) {
+	pairs := [][]string{
+		{"--description", "plain", "--html-notes", "<body>x</body>"},
+		{"--description", "plain", "--markdown-notes", "x"},
+		{"--html-notes", "<body>x</body>", "--markdown-notes", "x"},
+	}
+
+	for _, pair := range pairs {
+		f, _, _ := factory.NewTestFactory()
+		cmd := NewCmdCreate(f, func(opts *CreateOptions) error { return nil })
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs(append([]string{"--name", "n"}, pair...))
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+			t.Fatalf("%v: expected a mutual-exclusion error, got %v", pair, err)
+		}
+	}
+}
+
+func TestIsNonInteractive(t *testing.T) {
+	tests := []struct {
+		name string
+		opts *CreateOptions
+		want bool
+	}{
+		{
+			name: "explicit flag wins",
+			opts: &CreateOptions{IO: ttyIO(), NonInteractive: true},
+			want: true,
+		},
+		{
+			name: "all required flags on a tty",
+			opts: &CreateOptions{IO: ttyIO(), Name: "n", Assignee: "a", Project: "p"},
+			want: true,
+		},
+		{
+			name: "partial flags on a tty stays interactive",
+			opts: &CreateOptions{IO: ttyIO(), Name: "n"},
+			want: false,
+		},
+		{
+			name: "no tty means nothing to prompt on",
+			opts: func() *CreateOptions {
+				io, _, _, _ := iostreams.Test() // IsStdinTTY == false
+				return &CreateOptions{IO: io, Name: "n"}
+			}(),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.opts.isNonInteractive(); got != tt.want {
+				t.Fatalf("isNonInteractive() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// The optional due-date prompt used to consult opts.NonInteractive directly,
+// so an inferred non-interactive run still hit the prompt (and died on EOF).
+func TestGetOrPromptDueDate_InferredNonInteractiveSkipsPrompt(t *testing.T) {
+	opts := &CreateOptions{
+		IO:       ttyIO(),
+		Prompter: &explodingPrompter{t: t},
+		Name:     "Task",
+		Assignee: "me",
+		Project:  "Outgoing Tasks",
+	}
+
+	got, err := getOrPromptDueDate(opts, opts.isNonInteractive())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("due date = %v; want nil", got)
+	}
+}
+
+// "leave blank for none" must mean none when stdin hands us EOF, not a fatal error.
+func TestGetOrPromptDueDate_EOFMeansNoDueDate(t *testing.T) {
+	opts := &CreateOptions{
+		IO:       ttyIO(),
+		Prompter: &eofPrompter{},
+	}
+
+	got, err := getOrPromptDueDate(opts, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("due date = %v; want nil", got)
+	}
+}
+
+// Same for the optional "Add description?" confirmation.
+func TestPromptDescription_EOFMeansNoDescription(t *testing.T) {
+	opts := &CreateOptions{
+		IO:       ttyIO(),
+		Prompter: &eofPrompter{},
+	}
+
+	got, err := getOrPromptDescription(opts, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Fatalf("description = %q; want empty", got)
+	}
+}
+
+// Rich notes are a description, so don't turn around and ask for one.
+func TestPromptDescription_SkippedWhenRichNotesGiven(t *testing.T) {
+	for _, opts := range []*CreateOptions{
+		{IO: ttyIO(), Prompter: &explodingPrompter{t: t}, HTMLNotes: "<body>hi</body>"},
+		{IO: ttyIO(), Prompter: &explodingPrompter{t: t}, MarkdownNotes: "**hi**"},
+	} {
+		got, err := getOrPromptDescription(opts, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Fatalf("description = %q; want empty", got)
+		}
+	}
+}
+
+// A bad html_notes value must fail before any Asana request is made.
+func TestRunCreate_InvalidHTMLNotesFailsBeforeAnyRequest(t *testing.T) {
+	io, _, _, _ := iostreams.Test()
+
+	opts := &CreateOptions{
+		IO:        io,
+		Name:      "Task",
+		Assignee:  "me",
+		Project:   "P",
+		HTMLNotes: "<body><p>nope</p></body>",
+		Config: func() (*config.Config, error) {
+			t.Fatal("config should not be loaded when the notes are invalid")
+			return nil, nil
+		},
+		Client: func() (*asana.Client, error) {
+			t.Fatal("client should not be built when the notes are invalid")
+			return nil, nil
+		},
+	}
+
+	err := runCreate(opts)
+	if err == nil || !strings.Contains(err.Error(), "<p> is not allowed") {
+		t.Fatalf("expected an html-notes validation error, got %v", err)
 	}
 }

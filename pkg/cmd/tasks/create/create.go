@@ -5,13 +5,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
 	"github.com/timwehrle/asana/internal/api/asana"
 	"github.com/timwehrle/asana/internal/config"
 	"github.com/timwehrle/asana/internal/prompter"
+	"github.com/timwehrle/asana/pkg/cmdutils"
 	"github.com/timwehrle/asana/pkg/convert"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
+	"github.com/timwehrle/asana/pkg/htmlnotes"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
@@ -25,17 +28,35 @@ type CreateOptions struct {
 	Assignee       string
 	Due            string
 	Description    string
+	HTMLNotes      string
+	MarkdownNotes  string
 	Project        string
 	Section        string
 	Followers      []string
 	NonInteractive bool
+	DryRun         bool
+}
+
+// hasRichNotes reports whether a rich-text description was supplied, in which
+// case there is nothing to ask about the plain-text one.
+func (o *CreateOptions) hasRichNotes() bool {
+	return o.HTMLNotes != "" || o.MarkdownNotes != ""
 }
 
 // isNonInteractive returns true when prompts should be suppressed.
-// Explicit --non-interactive flag takes priority, but we also infer it
-// when the required flags (name, assignee, project) are all provided.
+//
+// Precedence:
+//  1. An explicit --non-interactive flag.
+//  2. stdin is not a terminal — there is nothing to prompt on, so prompting
+//     could only ever fail with EOF. This is what makes scripted and agent
+//     invocations work without the flag.
+//  3. All of the flags a prompt would have asked for (name, assignee, project)
+//     were supplied.
 func (o *CreateOptions) isNonInteractive() bool {
 	if o.NonInteractive {
+		return true
+	}
+	if o.IO != nil && !o.IO.IsStdinTTY {
 		return true
 	}
 	return o.Name != "" && o.Assignee != "" && o.Project != ""
@@ -52,7 +73,47 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new task",
-		Long:  "Create a new task in Asana.",
+		Long: heredoc.Doc(`
+			Create a new task in Asana.
+
+			Prompts are skipped when stdin is not a terminal, when
+			--non-interactive is passed, or when --name, --assignee and
+			--project are all supplied. Required values must then come from
+			flags; optional ones (due date, description) are simply left unset.
+
+			A description can be given in one of three mutually exclusive
+			forms: --description for plain text, --markdown-notes for Markdown,
+			or --html-notes for Asana-flavored HTML. The latter two produce a
+			rich-text description with working links, lists and emphasis.
+
+			Asana accepts only these HTML elements, and only <a> and <img> may
+			carry attributes: body strong em u s code ol ul li a blockquote pre
+			h1 h2 hr img. --html-notes is checked against those rules locally,
+			before any request is made. <a data-asana-gid="123"/> becomes an
+			@-mention.
+		`),
+		Example: heredoc.Doc(`
+			# Rehearse: resolve assignee, project and section, print the request, create nothing
+			$ asana tasks create --dry-run -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes @notes.md
+
+			# Fully specified, no prompts
+			$ asana tasks create -n "Ship the thing" -a "Chris Christoff" -p "Outgoing Tasks" -s "Chris" -m "Plain text notes"
+
+			# Rich text from Markdown, which is usually what you want
+			$ asana tasks create -n "Ship the thing" -a "Chris Christoff" -p "Outgoing Tasks" \
+			    --markdown-notes "Two things:
+
+			- The **build** is green
+			- Details are [in slack](https://example.slack.com/archives/C1/p2)"
+
+			# Read the description from a file, or from stdin
+			$ asana tasks create -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes @notes.md
+			$ generate-notes | asana tasks create -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes -
+
+			# Hand-written Asana HTML
+			$ asana tasks create -n "Ship the thing" -a me -p "Outgoing Tasks" \
+			    --html-notes '<body>See <a href="https://example.com">the docs</a></body>'
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if runF != nil {
 				return runF(opts)
@@ -64,15 +125,21 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Name, "name", "n", "", "Task name")
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Assignee name or 'me'")
 	cmd.Flags().StringVarP(&opts.Due, "due", "d", "", "Due date (YYYY-MM-DD, 'today', 'tomorrow')")
-	cmd.Flags().StringVarP(&opts.Description, "description", "m", "", "Task description")
+	cmd.Flags().StringVarP(&opts.Description, "description", "m", "", "Task description (plain text)")
+	cmd.Flags().StringVar(&opts.HTMLNotes, "html-notes", "", "Task description as Asana-flavored HTML; pass @file to read a file or - for stdin")
+	cmd.Flags().StringVar(&opts.MarkdownNotes, "markdown-notes", "", "Task description as Markdown, converted to rich text; pass @file to read a file or - for stdin")
 	cmd.Flags().StringVarP(&opts.Project, "project", "p", "", "Project name or ID")
 	cmd.Flags().StringVarP(&opts.Section, "section", "s", "", "Section name or ID")
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve everything and print the request without creating the task")
 
 	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
 	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
 	cmd.Flags().Lookup("cc").Hidden = true
+
+	// A task has one description; pick one representation of it.
+	cmd.MarkFlagsMutuallyExclusive("description", "html-notes", "markdown-notes")
 
 	return cmd
 }
@@ -80,6 +147,13 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 func runCreate(opts *CreateOptions) error {
 	cs := opts.IO.ColorScheme()
 	ni := opts.isNonInteractive()
+
+	// Resolve and validate rich-text notes first: it needs no network access,
+	// and a rejected value should not cost a round trip to Asana.
+	htmlNotes, err := htmlnotes.Rich(opts.HTMLNotes, opts.MarkdownNotes, opts.IO.In)
+	if err != nil {
+		return err
+	}
 
 	cfg, err := opts.Config()
 	if err != nil {
@@ -116,21 +190,15 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	// --- Due date (optional) ---
-	dueDate, err := getOrPromptDueDate(opts)
+	dueDate, err := getOrPromptDueDate(opts, ni)
 	if err != nil {
 		return err
 	}
 
 	// --- Description (optional) ---
-	description := opts.Description
-	if description == "" && !ni {
-		shouldPromptForDescription, err := opts.Prompter.Confirm("Add description?", "No")
-		if err == nil && shouldPromptForDescription {
-			description, err = addDescription(opts)
-		}
-		if err != nil {
-			return err
-		}
+	description, err := getOrPromptDescription(opts, ni)
+	if err != nil {
+		return err
 	}
 
 	// --- Project ---
@@ -153,9 +221,10 @@ func runCreate(opts *CreateOptions) error {
 
 	req := &asana.CreateTaskRequest{
 		TaskBase: asana.TaskBase{
-			Name:  name,
-			DueOn: dueDate,
-			Notes: description,
+			Name:      name,
+			DueOn:     dueDate,
+			Notes:     description,
+			HTMLNotes: htmlNotes,
 		},
 		Workspace: ws.ID,
 		Assignee:  assignee.ID,
@@ -172,6 +241,10 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("task validation failed: %w", err)
 	}
 
+	if opts.DryRun {
+		return cmdutils.PrintDryRun(opts.IO, "POST /tasks", req)
+	}
+
 	task, err := client.CreateTask(req)
 	if err != nil {
 		return fmt.Errorf("error creating task: %w", err)
@@ -179,6 +252,13 @@ func runCreate(opts *CreateOptions) error {
 
 	opts.IO.Printf("%s Created task %s\n", cs.SuccessIcon, cs.Bold(task.Name))
 	opts.IO.Printf("  %s %s\n", cs.Gray("Assignee:"), assignee.Name)
+	if htmlNotes != "" {
+		kind := "html"
+		if opts.MarkdownNotes != "" {
+			kind = "markdown"
+		}
+		opts.IO.Printf("  %s rich text (%s, %d chars)\n", cs.Gray("Description:"), kind, len(htmlNotes))
+	}
 	if len(followerNames) > 0 {
 		opts.IO.Printf("  %s %s\n", cs.Gray("Followers:"), strings.Join(followerNames, ", "))
 	}
@@ -266,14 +346,38 @@ func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, works
 	return users[selected], nil
 }
 
-func getOrPromptDueDate(opts *CreateOptions) (*asana.Date, error) {
+// getOrPromptDueDate resolves the (optional) due date. ni must be the result of
+// opts.isNonInteractive() — consulting opts.NonInteractive directly here is the
+// bug that made a fully-flagged run still stop at the due-date prompt.
+func getOrPromptDueDate(opts *CreateOptions, ni bool) (*asana.Date, error) {
 	if opts.Due != "" {
 		return parseDueDate(opts.Due)
 	}
-	if opts.NonInteractive {
+	if ni {
 		return nil, nil
 	}
 	return promptDueDate(opts)
+}
+
+// getOrPromptDescription resolves the (optional) plain-text description.
+func getOrPromptDescription(opts *CreateOptions, ni bool) (string, error) {
+	if opts.Description != "" || opts.hasRichNotes() || ni {
+		return opts.Description, nil
+	}
+
+	wantDescription, err := opts.Prompter.Confirm("Add description?", "No")
+	if err != nil {
+		// Optional prompt: no input available means "no description".
+		if prompter.IsNoInput(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to read description choice: %w", err)
+	}
+	if !wantDescription {
+		return "", nil
+	}
+
+	return addDescription(opts)
 }
 
 // dueDateKeyword returns the keyword if the input was a relative date keyword, empty otherwise.
@@ -303,6 +407,11 @@ func parseDueDate(input string) (*asana.Date, error) {
 func promptDueDate(opts *CreateOptions) (*asana.Date, error) {
 	input, err := opts.Prompter.Input("Enter due date (YYYY-MM-DD), leave blank for none: ", "")
 	if err != nil {
+		// The prompt itself offers "none" as an answer, so no input available
+		// resolves to none rather than aborting the whole command.
+		if prompter.IsNoInput(err) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to read due date: %w", err)
 	}
 	if input == "" {

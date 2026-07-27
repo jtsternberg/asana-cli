@@ -2,12 +2,36 @@ package prompter
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"testing"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/AlecAivazis/survey/v2/terminal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestIsNoInput(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "nil", err: nil, want: false},
+		{name: "bare EOF", err: io.EOF, want: true},
+		// This is the shape ask() produces when survey can't read stdin.
+		{name: "wrapped EOF", err: fmt.Errorf("could not prompt: %w", io.EOF), want: true},
+		{name: "interrupt is not no-input", err: terminal.InterruptErr, want: false},
+		{name: "other error", err: errors.New("boom"), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, IsNoInput(tt.err))
+		})
+	}
+}
 
 func runPrompterTests[T any](
 	t *testing.T,
