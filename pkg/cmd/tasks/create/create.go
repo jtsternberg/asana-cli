@@ -32,10 +32,19 @@ type CreateOptions struct {
 }
 
 // isNonInteractive returns true when prompts should be suppressed.
-// Explicit --non-interactive flag takes priority, but we also infer it
-// when the required flags (name, assignee, project) are all provided.
+//
+// Precedence:
+//  1. An explicit --non-interactive flag.
+//  2. stdin is not a terminal — there is nothing to prompt on, so prompting
+//     could only ever fail with EOF. This is what makes scripted and agent
+//     invocations work without the flag.
+//  3. All of the flags a prompt would have asked for (name, assignee, project)
+//     were supplied.
 func (o *CreateOptions) isNonInteractive() bool {
 	if o.NonInteractive {
+		return true
+	}
+	if o.IO != nil && !o.IO.IsStdinTTY {
 		return true
 	}
 	return o.Name != "" && o.Assignee != "" && o.Project != ""
@@ -116,21 +125,15 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	// --- Due date (optional) ---
-	dueDate, err := getOrPromptDueDate(opts)
+	dueDate, err := getOrPromptDueDate(opts, ni)
 	if err != nil {
 		return err
 	}
 
 	// --- Description (optional) ---
-	description := opts.Description
-	if description == "" && !ni {
-		shouldPromptForDescription, err := opts.Prompter.Confirm("Add description?", "No")
-		if err == nil && shouldPromptForDescription {
-			description, err = addDescription(opts)
-		}
-		if err != nil {
-			return err
-		}
+	description, err := getOrPromptDescription(opts, ni)
+	if err != nil {
+		return err
 	}
 
 	// --- Project ---
@@ -266,14 +269,38 @@ func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, works
 	return users[selected], nil
 }
 
-func getOrPromptDueDate(opts *CreateOptions) (*asana.Date, error) {
+// getOrPromptDueDate resolves the (optional) due date. ni must be the result of
+// opts.isNonInteractive() — consulting opts.NonInteractive directly here is the
+// bug that made a fully-flagged run still stop at the due-date prompt.
+func getOrPromptDueDate(opts *CreateOptions, ni bool) (*asana.Date, error) {
 	if opts.Due != "" {
 		return parseDueDate(opts.Due)
 	}
-	if opts.NonInteractive {
+	if ni {
 		return nil, nil
 	}
 	return promptDueDate(opts)
+}
+
+// getOrPromptDescription resolves the (optional) plain-text description.
+func getOrPromptDescription(opts *CreateOptions, ni bool) (string, error) {
+	if opts.Description != "" || ni {
+		return opts.Description, nil
+	}
+
+	wantDescription, err := opts.Prompter.Confirm("Add description?", "No")
+	if err != nil {
+		// Optional prompt: no input available means "no description".
+		if prompter.IsNoInput(err) {
+			return "", nil
+		}
+		return "", fmt.Errorf("failed to read description choice: %w", err)
+	}
+	if !wantDescription {
+		return "", nil
+	}
+
+	return addDescription(opts)
 }
 
 // dueDateKeyword returns the keyword if the input was a relative date keyword, empty otherwise.
@@ -303,6 +330,11 @@ func parseDueDate(input string) (*asana.Date, error) {
 func promptDueDate(opts *CreateOptions) (*asana.Date, error) {
 	input, err := opts.Prompter.Input("Enter due date (YYYY-MM-DD), leave blank for none: ", "")
 	if err != nil {
+		// The prompt itself offers "none" as an answer, so no input available
+		// resolves to none rather than aborting the whole command.
+		if prompter.IsNoInput(err) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to read due date: %w", err)
 	}
 	if input == "" {
