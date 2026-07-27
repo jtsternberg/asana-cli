@@ -1,5 +1,49 @@
 # Changelog
 
+## [3.4.0] - 2026-07-27
+
+### Added
+
+- **Rich-text task descriptions** — `tasks create` and `tasks update` accept `--markdown-notes` (Markdown, converted for you) and `--html-notes` (hand-written Asana-flavored HTML) alongside plain `--description`. Both produce a description with working links, lists and emphasis instead of a wall of plain text. `--html-notes` is validated locally against Asana's element whitelist before any request is made, so a rejected value costs no round trip, and `<a data-asana-gid="123"/>` becomes an @-mention. Either flag accepts `@file` to read a file or `-` to read stdin.
+
+- **`--dry-run` on `tasks create` and `tasks update`** — resolves assignee, project and section, prints the exact request payload, and sends nothing. This is the only way to inspect the `html_notes` that `--markdown-notes` generated without creating a task.
+
+- **`tasks create --json`** — prints the created task instead of a human summary, so a script no longer has to scrape the `URL:` line to learn the ID of the task it just made. Combined with `--dry-run` it prints just the request payload, with no prose around it.
+
+- **One canonical JSON task shape across `create`, `list`, `search` and `view`** — a new `pkg/taskjson` replaces the four hand-rolled shapes these commands used, so one parser handles all of them, including creating a task and re-fetching it later. `html_notes` is now included, carrying the rich-text form of the description. The identifier key is `id`, not Asana's `gid`, as before.
+
+- **Unassigned and project-less task creation** — `tasks create --unassigned` (or `--assignee ""`) creates a task with no assignee, and `--no-project` creates a workspace-level task with no project or section. Both are explicit on purpose: merely omitting `--assignee` or `--project` remains an error, so a script that forgot one does not quietly produce an ownerless or unfiled task.
+
+- **Emptying fields with `tasks update`** — `--unassigned`, `--no-due` and `--no-description` clear a field rather than set it, and `--incomplete` reopens a completed task. Every field on the update request carries `omitempty` so that an update touches only what was asked for, which had the side effect that no field could be emptied at all.
+
+- **`tasks update --remove-followers`** — unfollow users, the counterpart to `--followers`.
+
+- **`ASANA_TOKEN` environment override** — `ASANA_TOKEN`, or its alias `ASANA_PAT`, takes precedence over the system keyring, and when it is set the keyring is not consulted at all. An unattended job on a headless box no longer depends on a D-Bus Secret Service being present and unlocked. `auth status` reports which source the token came from, and `auth login`, `auth update` and `auth logout` warn when an override is in play, since it outranks anything they store or remove.
+
+### Fixed
+
+- **`asana --version` and `asana --help` no longer require a config file** — on a machine that had never run `auth login`, every invocation died with `No configuration file found`, including those two. Version and help are pure local output; an install script, a container health check and "what have I got installed" all reach for them first, and advice to run `asana upgrade` is useless if you cannot read your current version. Bare `asana` and `completion` were failing the same way.
+
+- **Non-interactive mode no longer stops at optional prompts** — `tasks create` and `tasks update` consulted the `--non-interactive` flag directly rather than the resolved non-interactive state, so a fully-flagged run still stopped to ask for a due date or a description. Prompts are now skipped whenever stdin is not a terminal, which is what makes scripted and agent invocations work without passing the flag at all.
+
+- **`tasks view` reported `num_subtasks: 0` and no dependencies for every task** — `Task.Fetch` requested no fields, so Asana returned only its default set and every opt-in field arrived empty. `num_subtasks`, `dependencies` and `dependents` are now requested and populate in text output as well as JSON.
+
+- **A failed `auth login` no longer leaves a config with no credential behind it** — the config was written before the token, so a keyring failure left a config on disk claiming a login that never completed: `auth status` reported a user and a workspace while every command failed to authenticate. The token is now stored first and rolled back if the config write fails.
+
+- **Local builds report the commit they were built from** — a build from source was labelled with the last release tag, so a locally-built binary was indistinguishable from the release it was built after.
+
+### Changed
+
+- **`list --json` and `search --json` emit more fields** — routing them through the canonical shape means they now include `html_notes`, `memberships`, `dependencies`, `dependents`, `followers`, `workspace`, `created_at`, `modified_at`, `completed_at`, `liked` and `num_likes`, and `completed` and `assignee` are always present rather than omitted when empty. No key was removed or changed type, so existing parsers keep working.
+
+- **JSON output no longer HTML-escapes** — `<` and `>` come through as themselves, which is what makes an `html_notes` value readable. Semantically identical JSON.
+
+- **Agent skill docs** — rich-text notes and honest non-interactive behavior, assignee precedence and the unassigned flags, the `CREATE_TASK` step order and its missing guard rails, the transport boundary and what switching costs, a warning against `asana upgrade` over a local build, and the `ASANA_TOKEN` override including the config-file gap it does not yet close.
+
+### Known limitations
+
+- **`ASANA_TOKEN` alone cannot bootstrap a fresh machine** (`asana-cli-19k`) — the override removes the keyring dependency but not the interactive-login dependency. A default workspace still lives only in `~/.config/asana-cli/config.yaml` and only `auth login` writes that file, so on a machine that has never logged in the override gets you as far as `--version` and `--help`, but a command that talks to Asana still needs that file copied or hand-written. Supplying the workspace from the environment is not yet possible.
+
 ## [3.3.2] - 2026-07-09
 
 ### Fixed
