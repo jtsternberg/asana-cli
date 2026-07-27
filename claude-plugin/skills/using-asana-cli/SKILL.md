@@ -72,6 +72,12 @@ not consulted at all — that is how the CLI runs where no keyring is available
 (containers, CI, unattended jobs on a headless box). If a user reports that
 `auth login` "did not take", check for one of those variables first.
 
+A token alone is not yet enough on a machine that has never logged in: the
+default workspace lives only in `~/.config/asana-cli/config.yaml` and only
+`asana auth login` writes it. If a user hits `No configuration file found` on a
+headless box, that is the gap — the fix today is to copy or hand-write the
+workspace block; supplying it from the environment is tracked as `asana-cli-19k`.
+
 ## Task Management
 
 ### Create a task (non-interactive)
