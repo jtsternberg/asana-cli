@@ -37,7 +37,15 @@ If not authenticated, run `asana auth login` and follow the prompts.
 
 ### Create a task (non-interactive)
 
-Provide `--name`, `--assignee`, and `--project` to skip all prompts. When all three are provided, non-interactive mode is auto-detected. Without flags, falls back to interactive prompts.
+Prompts are skipped when **any** of these holds:
+
+1. **stdin is not a terminal** — which is always true when you run the CLI from a tool call
+2. `--non-interactive` was passed
+3. `--name`, `--assignee` and `--project` were all supplied
+
+Required values must then come from flags (a missing one is an error naming the flag). Optional ones — due date, description — are simply left unset rather than prompted for.
+
+**Pass `--non-interactive` anyway.** It costs nothing, states the intent, and does not depend on how the calling shell happened to wire stdin. Every example in `references/CREATE_TASK.md` includes it.
 
 ```!
 asana tasks create --help
@@ -45,11 +53,67 @@ asana tasks create --help
 
 ### Update a task (non-interactive)
 
-Pass a task ID as the first argument to use flags. Without a task ID, falls back to interactive mode.
+Pass a task ID as the first argument to use flags. A task ID is **required** whenever prompts are unavailable (no terminal on stdin, or `--non-interactive`) — without one the command fails with a message saying so, rather than hanging or erroring on EOF.
 
 ```!
 asana tasks update --help
 ```
+
+### Rich text descriptions — links, lists, bold
+
+`--description`/`-m` sets the **plain text** `notes` field. Markdown in it stays literal: `**bold**` renders as asterisks and `[text](url)` renders as brackets. There are real tasks in this workspace that look like that; don't add more.
+
+For anything with a hyperlink, a bulleted list, or emphasis, use one of these instead. All three description forms are mutually exclusive.
+
+| Flag | Input | Use when |
+|------|-------|----------|
+| `--markdown-notes` | Markdown | **Default choice for rich text.** It's what you already write. |
+| `--html-notes` | Asana-flavored HTML | You need exact control, or an `@`-mention. |
+| `--description` / `-m` | Plain text | The description genuinely has no formatting. |
+
+Both rich-text flags accept the value three ways, because HTML and multi-line Markdown are painful as shell arguments:
+
+```bash
+# Inline
+asana tasks create -n "Task" -a "Chris" -p "Outgoing Tasks" --non-interactive \
+  --markdown-notes "Two things:
+
+- The **build** is green again
+- Details are [in slack](https://example.slack.com/archives/C1/p2)"
+
+# From a file — best for anything long; write the file, then pass @path
+asana tasks create -n "Task" -a "Chris" -p "Outgoing Tasks" --non-interactive \
+  --markdown-notes @/tmp/notes.md
+
+# From stdin
+generate-notes | asana tasks update 1234567890 --markdown-notes -
+```
+
+#### Markdown → Asana conversion
+
+Supported: `#`/`##` headings, `-`/`*`/`+` and `1.` lists (including nesting), `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`, `[text](url)`, `<https://autolink>`, `> blockquotes`, fenced code blocks, and `---`.
+
+Not supported, because Asana has no element for them: **tables**, images, footnotes, reference-style links. `###` and deeper are demoted to `<h2>`. Raw HTML in Markdown input is escaped, not passed through. A **bare URL stays plain text** — wrap it in `<…>` or use `[text](url)` if you want it clickable.
+
+A single newline stays a line break and a blank line separates blocks, matching how Asana's own editor stores descriptions.
+
+#### Asana's html_notes rules (only relevant for `--html-notes`)
+
+The value must be well-formed **XML** with a single `<body>` root. Allowed elements, and nothing else:
+
+`body` `strong` `em` `u` `s` `code` `ol` `ul` `li` `a` `blockquote` `pre` `h1` `h2` `hr` `img`
+
+Only `<a>` and `<img>` may carry attributes. Note what is **absent**: no `<p>`, no `<br>`, no `<div>`, no `<h3>`, no `<span>`. Any of them is a 400 from Asana.
+
+The CLI checks all of this locally before sending anything, and names the offending element:
+
+```
+Error: <p> is not allowed in Asana html notes; allowed elements are: a blockquote body code em h1 h2 hr img li ol pre s strong u ul
+```
+
+It also repairs what is unambiguous: a bare fragment is wrapped in `<body>`, `<hr>` becomes `<hr/>` (XML needs the slash), and a stray `&` becomes `&amp;`. Anything else you must fix yourself.
+
+`<a data-asana-gid="123"/>` expands to an @-mention of user/task/project 123.
 
 ### Delete a task
 
@@ -269,6 +333,9 @@ When the user describes an action in natural language, translate it to the corre
 | "find the outgoing project" / "which project is X in?" | `asana projects list -q "outgoing"` | Uses typeahead API — no 100-project ceiling |
 | "mark it done" / "complete this" | `--complete` | Update command only |
 | "move it to Project X" | `asana tasks move <task-id>` | Don't delete and recreate |
+| description has a list, a link, or bold text | `--markdown-notes "..."` | **Not** `-m`. `-m` is plain text and leaves `**bold**` literal. |
+| "link the words X to this URL" | `--markdown-notes "... [X](url) ..."` | Anchoring a link on specific words needs rich text |
+| "@-mention Chris in the description" | `--html-notes '<body>... <a data-asana-gid="GID"/> ...</body>'` | Get the GID from `asana users list --json` |
 
 **Critical rule:** For `--due today` and `--due tomorrow`, ALWAYS pass the keyword literally. The CLI resolves it using `time.Now()` on the local machine, which is more reliable than the agent computing a date from session context (which may be stale or in a different timezone).
 
@@ -289,6 +356,7 @@ After ANY create, update, or delete operation, you MUST verify the result:
 1. **Read the CLI output carefully** — it confirms what was actually set (name, assignee, due date, followers, URL)
 2. **Check for missing fields** — if you requested a due date but the output doesn't show one, the operation failed silently
 3. **Due date keyword confirmation** — when you pass `--due today`, the output shows the resolved date with the keyword in parentheses, e.g. `Due: Apr 1, 2026 (today)`. Verify this matches your intent.
-4. **Never claim success based on vibes** — if the output doesn't confirm a field was set, it wasn't. Check the receipts.
+4. **Rich text confirmation** — when you pass `--markdown-notes` or `--html-notes`, the output includes a `Description: rich text (markdown, 163 chars)` line. No such line means the description was not set as rich text.
+5. **Never claim success based on vibes** — if the output doesn't confirm a field was set, it wasn't. Check the receipts.
 
 If something looks wrong, run `asana tasks view <task-id>` to get the full task state.
