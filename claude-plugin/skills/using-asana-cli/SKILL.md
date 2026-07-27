@@ -11,6 +11,39 @@ Manage Asana tasks, Asana projects, and Asana workspace members from the command
 
 This skill only applies when the user is working with Asana specifically.
 
+## Two transports reach this workspace. Know which one you're on.
+
+There are two independent ways to write to Asana from here, and **this skill governs only one of them**:
+
+1. **The `asana` CLI** — what this skill documents.
+2. **The Asana MCP connector** — `mcp__claude_ai_Asana__*` tools, if connected. Same workspace, same data, **different capability surface.**
+
+They are not interchangeable, and the difference is entirely about what protects you:
+
+| | `asana` CLI | MCP connector |
+|---|---|---|
+| Rehearse before writing (`--dry-run`) | yes | **no** |
+| `html_notes` checked against Asana's allowlist *before* sending | yes, locally, naming the bad element | **no** — you get a 400 from Asana instead |
+| Markdown → rich text conversion | yes (`--markdown-notes`) | **no** — you hand-write the HTML |
+| Receipt confirming what was set | yes (`Description: rich text (…)`, `Assignee: …`) | **no** — you must re-read the task |
+| Resolve people/projects/sections by name | yes, partial matching | **no** — needs numeric GIDs |
+
+**For writes, the CLI is the default.** Every guard rail in this skill lives in the CLI; on the connector they simply do not exist.
+
+### The rule that matters
+
+**Hitting a CLI limitation is not a reason to switch transports. It is a reason to say what you hit.**
+
+A previous agent needed an unassigned task, met `Error: --assignee is required in non-interactive mode`, and quietly created the task through the MCP connector instead. It worked — and it bypassed dry-run, local validation, and the receipt line, with nothing in the transcript marking the moment the safety net went away. The user could not see that it had happened.
+
+So, when the CLI won't do something:
+
+1. **Run `asana <command> --help` before concluding it can't.** The blind agent guessed at `-a ""` and `-a "none"` and never read the help — where the flag it needed would have been listed. Two failed guesses is not evidence of absence.
+2. Check `references/TROUBLESHOOTING.md`.
+3. If it really is a gap, **say so out loud**, then choose deliberately — and if you switch to the connector, state that you switched and what verification you lost. A silent transport switch is the failure mode; using the connector on purpose, with the trade-off named, is fine.
+
+Reads are lower-stakes: use whichever is convenient. `search_tasks`/`get_task` on the connector are handy for `opt_fields` the CLI doesn't expose (`html_notes`, `created_by`). Note the connector's search index lags a minute or two behind writes, while the CLI's `tasks list` is immediately consistent.
+
 ## Operation-specific workflows
 
 **You MUST read the corresponding reference file(s) before performing any operation.** These contain the exact steps, guard rails, and gotchas for each action. Do not skip this step.
