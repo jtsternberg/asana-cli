@@ -10,6 +10,7 @@ import (
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
+	"github.com/jtsternberg/asana-cli/pkg/format"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 
 	"github.com/spf13/cobra"
@@ -80,7 +81,7 @@ func displayWorkspaces(opts *ListOptions, workspaces []*asana.Workspace) error {
 			return err
 		}
 		cs := opts.IO.ColorScheme()
-		fmt.Fprintf(opts.IO.Out, "No workspaces found for %s", cs.Bold(cfg.Username))
+		fmt.Fprintf(opts.IO.Out, "%s", format.Heading("No workspaces found for %s", cs.Bold(cfg.Username), "No workspaces found"))
 		return nil
 	}
 
@@ -121,7 +122,7 @@ func displayWorkspacesText(opts *ListOptions, workspaces []*asana.Workspace) err
 		return err
 	}
 
-	fmt.Fprintf(opts.IO.Out, "\nWorkspaces of %s:\n\n", cs.Bold(cfg.Username))
+	fmt.Fprintf(opts.IO.Out, "\n%s:\n\n", format.Heading("Workspaces of %s", cs.Bold(cfg.Username), "Workspaces"))
 	for i, ws := range workspaces {
 		wsType := "Workspace"
 		if ws.IsOrganization {

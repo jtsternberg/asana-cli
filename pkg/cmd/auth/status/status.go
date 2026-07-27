@@ -15,12 +15,13 @@ import (
 )
 
 type Status struct {
-	LoggedIn       bool
-	APIOperational bool
-	TokenSource    auth.Source
-	User           *asana.User
-	WorkspaceID    string
-	WorkspaceName  string
+	LoggedIn        bool
+	APIOperational  bool
+	TokenSource     auth.Source
+	User            *asana.User
+	WorkspaceID     string
+	WorkspaceName   string
+	WorkspaceSource config.WorkspaceSource
 }
 
 type StatusOptions struct {
@@ -92,11 +93,13 @@ func getStatus(opts *StatusOptions) (*Status, error) {
 		return nil, fmt.Errorf("failed to get config: %w", err)
 	}
 
-	// Workspace may be unset (nil) when authenticated but no default workspace
-	// has been selected; printStatus reports that gracefully.
-	if cfg.Workspace != nil {
-		status.WorkspaceID = cfg.Workspace.ID
-		status.WorkspaceName = cfg.Workspace.Name
+	// Resolved rather than read straight off the config: $ASANA_WORKSPACE
+	// outranks the file, and a workspace in force must not be reported as absent.
+	// An error here means neither source supplied one, which printStatus reports.
+	if ws, source, err := cfg.WorkspaceWithSource(); err == nil {
+		status.WorkspaceID = ws.ID
+		status.WorkspaceName = ws.Name
+		status.WorkspaceSource = source
 	}
 
 	if status.LoggedIn {
@@ -145,11 +148,18 @@ func printStatus(io *iostreams.IOStreams, status *Status) error {
 	}
 
 	fmt.Fprintf(io.Out, "\n%s:\n", cs.Bold("Workspace Configuration"))
-	if status.WorkspaceID == "" || status.WorkspaceName == "" {
+	if status.WorkspaceID == "" {
 		fmt.Fprintf(io.Out, "%s %s\n", cs.WarningIcon, cs.Bold("No default workspace configured"))
 	} else {
-		fmt.Fprintf(io.Out, "  Name: %s\n", status.WorkspaceName)
+		// A workspace from $ASANA_WORKSPACE is a bare GID: only the config file
+		// carries a name, and inventing one would put a wrong value on screen.
+		if status.WorkspaceName != "" {
+			fmt.Fprintf(io.Out, "  Name: %s\n", status.WorkspaceName)
+		}
 		fmt.Fprintf(io.Out, "  ID:   %s\n", status.WorkspaceID)
+		if status.WorkspaceSource != config.WorkspaceSourceNone {
+			fmt.Fprintf(io.Out, "  Source: %s\n", status.WorkspaceSource.Describe())
+		}
 	}
 
 	return nil

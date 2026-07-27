@@ -218,7 +218,7 @@ func displayJSON(opts *ListOptions, tasks []*asana.Task) error {
 func printTasks(io *iostreams.IOStreams, username string, tasks []*asana.Task) error {
 	cs := io.ColorScheme()
 
-	fmt.Fprintf(io.Out, "\nTasks for %s:\n\n", cs.Bold(username))
+	fmt.Fprintf(io.Out, "\n%s:\n\n", format.Heading("Tasks for %s", cs.Bold(username), "Tasks"))
 
 	for i, task := range tasks {
 		assignee := "Unassigned"

@@ -261,20 +261,22 @@ and unattended jobs on a headless box under cron or a systemd timer. `asana auth
 status` reports which source the token came from, and `auth login`/`auth logout`
 warn when an override is in play, since it outranks anything they store or remove.
 
-The token is not the whole story yet: a default workspace still lives only in
-`~/.config/asana-cli/config.yaml`, and only `asana auth login` writes that file.
-On a machine that has never logged in, the override gets you as far as
-`asana --version` and `asana --help`, but a command that talks to Asana still
-needs that file — either copy one from a machine you have logged in on, or write
-the workspace block by hand:
+A default workspace otherwise lives only in `~/.config/asana-cli/config.yaml`,
+which only `asana auth login` writes, so `ASANA_WORKSPACE` supplies it the same
+way. Together the two variables are enough to run on a machine that has never
+logged in — no keyring, no config file, nothing interactive:
 
-```yaml
-workspace:
-  id: "1234567890"
-  name: "your-workspace"
+```bash
+export ASANA_TOKEN=1/1234:abcd
+export ASANA_WORKSPACE=14748072439266   # asana workspaces list --json | jq -r '.[].id'
+asana tasks list --json
 ```
 
-Supplying the workspace from the environment instead is tracked as `asana-cli-19k`.
+`ASANA_WORKSPACE` takes a workspace GID, not a name — resolving a name would need
+an API call before the CLI knows what to ask for, and a wrong guess is worse than
+a clear error. A malformed value stops the command rather than quietly falling
+back to the config file. `asana auth status` reports which source supplied each of
+the token and the workspace.
 
 ## License
 

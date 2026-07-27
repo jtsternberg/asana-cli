@@ -1,5 +1,21 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`ASANA_WORKSPACE` environment override** — supplies the default workspace as a GID, taking precedence over the config file. With `ASANA_TOKEN`, this is enough to run on a machine that has never run `auth login`: no keyring, no config file, nothing interactive. That closes the gap v3.4.0 shipped with, where the token override removed the keyring dependency but not the dependency on the one command that writes a config file. `auth status` reports the source of the workspace as well as the token.
+
+### Fixed
+
+- **A missing config file is no longer an error** — `Config.Load` treated it as an authentication failure and told the user to run `auth login`, which is exactly what an unattended run cannot do. Load now reads what is there; whether the result is usable is `RequireWorkspace`'s judgement, and its error names both the interactive and the environment route.
+
+- **Recording the build version can no longer fail a command** — every invocation wrote `build:` into the config file and aborted if the write failed. Nothing reads that value back, and a machine configured purely from the environment has no file to write, so a container with a read-only filesystem could never satisfy it.
+
+- **`tasks list` and `workspaces list` no longer print `Tasks for :`** — the username comes from the config file, so an environment-configured machine has none. The heading now omits the subject instead of interpolating an empty one.
+
+- **`auth status` no longer reports "No default workspace configured" when one is in force** — it read `cfg.Workspace` directly and so could not see the environment override.
+
 ## [3.4.0] - 2026-07-27
 
 ### Added
@@ -42,7 +58,7 @@
 
 ### Known limitations
 
-- **`ASANA_TOKEN` alone cannot bootstrap a fresh machine** (`asana-cli-19k`) — the override removes the keyring dependency but not the interactive-login dependency. A default workspace still lives only in `~/.config/asana-cli/config.yaml` and only `auth login` writes that file, so on a machine that has never logged in the override gets you as far as `--version` and `--help`, but a command that talks to Asana still needs that file copied or hand-written. Supplying the workspace from the environment is not yet possible.
+- **`ASANA_TOKEN` alone cannot bootstrap a fresh machine** (`asana-cli-19k`, fixed after this release) — the override removes the keyring dependency but not the interactive-login dependency. A default workspace still lives only in `~/.config/asana-cli/config.yaml` and only `auth login` writes that file, so on a machine that has never logged in the override gets you as far as `--version` and `--help`, but a command that talks to Asana still needs that file copied or hand-written. Supplying the workspace from the environment is not yet possible.
 
 ## [3.3.2] - 2026-07-09
 

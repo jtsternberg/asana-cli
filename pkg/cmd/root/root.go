@@ -48,20 +48,20 @@ func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) 
 
 	// Only load config for non-auth/upgrade commands
 	if !isNoAuthCommand(os.Args) {
+		// f.Config() already loads; a missing config file is not an error,
+		// because a machine configured through $ASANA_TOKEN and $ASANA_WORKSPACE
+		// has no file to read. Commands that need a workspace get a useful error
+		// from config.RequireWorkspace instead.
 		cfg, err := f.Config()
 		if err != nil {
 			return nil, err
 		}
 
-		err = cfg.Load()
-		if err != nil {
-			return nil, err
-		}
-
-		err = cfg.Set("build", build.Version)
-		if err != nil {
-			return nil, err
-		}
+		// Recording the build is bookkeeping, and nothing reads it back. It must
+		// not be able to fail a command: there is no config file to write on a
+		// machine configured purely from the environment, and a container with a
+		// read-only filesystem can never satisfy it at all.
+		_ = cfg.Set("build", build.Version)
 	}
 
 	// Add other commands

@@ -72,11 +72,11 @@ not consulted at all — that is how the CLI runs where no keyring is available
 (containers, CI, unattended jobs on a headless box). If a user reports that
 `auth login` "did not take", check for one of those variables first.
 
-A token alone is not yet enough on a machine that has never logged in: the
-default workspace lives only in `~/.config/asana-cli/config.yaml` and only
-`asana auth login` writes it. If a user hits `No configuration file found` on a
-headless box, that is the gap — the fix today is to copy or hand-write the
-workspace block; supplying it from the environment is tracked as `asana-cli-19k`.
+`ASANA_WORKSPACE` supplies the default workspace the same way, as a GID (not a
+name). `ASANA_TOKEN` plus `ASANA_WORKSPACE` is enough to run on a machine with no
+keyring and no config file, which is the container and headless-cron story. If a
+user hits `No default workspace configured` on such a box, that variable is what
+is missing; `auth status` reports the source of both the token and the workspace.
 
 ## Task Management
 

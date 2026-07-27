@@ -171,3 +171,16 @@ func Duration(minutes int) string {
 	}
 	return strings.Join(parts, " ")
 }
+
+// Heading fills template with subject, or returns fallback when there is no
+// subject to name.
+//
+// The username comes from the config file, so a machine configured entirely
+// through $ASANA_TOKEN and $ASANA_WORKSPACE has none. Interpolating it anyway
+// prints "Tasks for :", which reads as a bug rather than as an absence.
+func Heading(template, subject, fallback string) string {
+	if strings.TrimSpace(subject) == "" {
+		return fallback
+	}
+	return fmt.Sprintf(template, subject)
+}

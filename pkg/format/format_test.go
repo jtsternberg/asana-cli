@@ -296,3 +296,46 @@ func TestDedent(t *testing.T) {
 		})
 	}
 }
+
+func TestHeading(t *testing.T) {
+	tests := []struct {
+		name     string
+		template string
+		subject  string
+		fallback string
+		want     string
+	}{
+		{
+			name:     "known subject reads naturally",
+			template: "Tasks for %s",
+			subject:  "Justin Sternberg",
+			fallback: "Tasks",
+			want:     "Tasks for Justin Sternberg",
+		},
+		// A machine configured only through $ASANA_TOKEN and $ASANA_WORKSPACE has
+		// no config file, so no username. "Tasks for :" is a leak of that.
+		{
+			name:     "unknown subject falls back",
+			template: "Tasks for %s",
+			subject:  "",
+			fallback: "Tasks",
+			want:     "Tasks",
+		},
+		{
+			name:     "whitespace-only subject falls back",
+			template: "Tasks for %s",
+			subject:  "   ",
+			fallback: "Tasks",
+			want:     "Tasks",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := format.Heading(tt.template, tt.subject, tt.fallback); got != tt.want {
+				t.Errorf("Heading(%q, %q, %q) = %q, want %q",
+					tt.template, tt.subject, tt.fallback, got, tt.want)
+			}
+		})
+	}
+}

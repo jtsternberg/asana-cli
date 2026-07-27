@@ -37,6 +37,9 @@ func (e Error) Error() string {
 
 var errConfigFileNotFound viper.ConfigFileNotFoundError
 
+// getenv is a seam for reading the environment.
+var getenv = os.Getenv
+
 // configDir determines the directory for storing configuration files.
 func configDir() string {
 	var path string
@@ -120,9 +123,12 @@ func (c *Config) Load() error {
 
 	if err := viper.ReadInConfig(); err != nil {
 		if errors.As(err, &errConfigFileNotFound) {
-			return Error{Message: heredoc.Docf(`
-                No configuration file found. Please run %[1]sasana auth login%[1]s to authenticate.
-            `, "`")}
+			// Not an error. Load's job is to read what is there, and a machine
+			// configured entirely through the environment has nothing to read.
+			// Whether the result is usable is RequireWorkspace's judgement, and
+			// it can name both ways out; this could only ever say "run auth
+			// login", which is exactly what an unattended run cannot do.
+			return nil
 		}
 		return fmt.Errorf("failed to read config: %w", err)
 	}
@@ -134,25 +140,46 @@ func (c *Config) Load() error {
 	return nil
 }
 
-// RequireWorkspace returns the configured default workspace or a friendly
-// error when none is set. Commands that operate against a workspace must call
-// this instead of dereferencing c.Workspace directly: Workspace is a pointer
+// RequireWorkspace returns the default workspace from $ASANA_WORKSPACE or, failing
+// that, the config file, with a friendly error when neither supplies one.
+// Commands that operate against a workspace must call this instead of
+// dereferencing c.Workspace directly: Workspace is a pointer
 // that stays nil when the config loads successfully but no default workspace
 // has been selected (e.g. an empty or partial config file), and dereferencing
 // it then panics with a nil pointer SIGSEGV.
 func (c *Config) RequireWorkspace() (*asana.Workspace, error) {
+	ws, _, err := c.WorkspaceWithSource()
+	return ws, err
+}
+
+// WorkspaceWithSource returns the default workspace and where it came from.
+//
+// The environment outranks the config file, mirroring how auth resolves a token.
+// A malformed override is an error rather than a fall-through: silently using a
+// different workspace than the one asked for is worse than stopping.
+func (c *Config) WorkspaceWithSource() (*asana.Workspace, WorkspaceSource, error) {
+	if ws, err := EnvWorkspace(); err != nil {
+		return nil, WorkspaceSourceNone, err
+	} else if ws != nil {
+		return ws, WorkspaceSourceEnv, nil
+	}
+
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
 	if c.Workspace == nil || c.Workspace.ID == "" {
-		return nil, Error{Message: heredoc.Docf(`
-            No default workspace configured. Run %[1]sasana auth login%[1]s to
-            authenticate and select one, or %[1]sasana config set default-workspace%[1]s
-            if you are already logged in.
-        `, "`")}
+		return nil, WorkspaceSourceNone, Error{Message: heredoc.Docf(`
+            No default workspace configured.
+
+            Interactively: run %[1]sasana auth login%[1]s to authenticate and select one,
+            or %[1]sasana config set default-workspace%[1]s if you are already logged in.
+
+            Unattended, with no config file: set $%[2]s to a workspace GID
+            (%[1]sasana workspaces list --json%[1]s), alongside $ASANA_TOKEN.
+        `, "`", EnvVarWorkspace)}
 	}
 
-	return c.Workspace, nil
+	return c.Workspace, WorkspaceSourceConfigFile, nil
 }
 
 func (c *Config) Set(field string, value any) error {
