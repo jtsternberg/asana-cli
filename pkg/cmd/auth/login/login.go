@@ -11,6 +11,7 @@ import (
 
 	"github.com/timwehrle/asana/internal/api/asana"
 	"github.com/timwehrle/asana/internal/config"
+	"github.com/timwehrle/asana/pkg/cmdutils"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
 
@@ -51,7 +52,12 @@ func NewCmdLogin(f factory.Factory, runF func(*LoginOptions) error) *cobra.Comma
 				1. Visit https://app.asana.com/0/my-apps
 				2. Click "Create new token"
 				3. Give your token a description (e.g., "CLI Access")
-				4. Copy the generated token`),
+				4. Copy the generated token
+
+				The token is stored in your OS keyring. $%[1]s (or its alias
+				$%[2]s) takes precedence over the keyring when set, which is
+				how unattended jobs and machines without a keyring
+				authenticate.`, auth.EnvVarToken, auth.EnvVarPAT),
 		Example: heredoc.Doc(`
 					# Log in interactively and select a workspace
 					$ asana auth login
@@ -98,8 +104,14 @@ func NewCmdLogin(f factory.Factory, runF func(*LoginOptions) error) *cobra.Comma
 func runLogin(opts *LoginOptions) error {
 	cs := opts.IO.ColorScheme()
 
+	// An environment override wins over whatever we are about to store, so say so
+	// before asking for a token rather than after.
+	cmdutils.WarnEnvTokenBeforeStore(opts.IO)
+
+	// Deliberately the keyring view, not the effective one: an env token must not
+	// make this look "already logged in" and skip storing a credential.
 	var token string
-	token, err := auth.Get()
+	token, err := auth.GetStored()
 	if err == nil && token != "" {
 		cfg := &config.Config{}
 		if err := cfg.Load(); err != nil {

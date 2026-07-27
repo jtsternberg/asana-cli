@@ -8,6 +8,7 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
 	"github.com/timwehrle/asana/internal/auth"
+	"github.com/timwehrle/asana/pkg/cmdutils"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
@@ -42,6 +43,9 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 
 func runUpdate(opts *UpdateOptions) error {
 	cs := opts.IO.ColorScheme()
+
+	// The new token lands in the keyring, which an environment override outranks.
+	cmdutils.WarnEnvTokenBeforeStore(opts.IO)
 
 	newToken, err := opts.Prompter.Token()
 	if err != nil {

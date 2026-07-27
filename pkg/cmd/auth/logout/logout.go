@@ -3,6 +3,7 @@ package logout
 import (
 	"fmt"
 
+	"github.com/timwehrle/asana/pkg/cmdutils"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/iostreams"
 
@@ -23,11 +24,15 @@ func NewCmdLogout(f factory.Factory, runF func(options *LogoutOptions) error) *c
 	cmd := &cobra.Command{
 		Use:   "logout",
 		Short: "Log out of your Asana account",
-		Long: heredoc.Doc(`
+		Long: heredoc.Docf(`
 				Log out of your current Asana account by removing locally
 				stored credentials.
 
-				This action revokes CLI access to the Asana API.`),
+				This action revokes CLI access to the Asana API.
+
+				Only the keyring entry is removed. A token in $%[1]s or
+				$%[2]s takes precedence over the keyring, so the CLI stays
+				authenticated while one of those is set.`, auth.EnvVarToken, auth.EnvVarPAT),
 		Example: heredoc.Doc(`$ asana auth logout`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if runF != nil {
@@ -49,12 +54,18 @@ func runLogout(opts *LogoutOptions) error {
 		return err
 	}
 
-	err = auth.Delete()
+	removed, err := auth.DeleteStored()
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintln(opts.IO.Out, cs.SuccessIcon, "Logged out")
+	if removed {
+		fmt.Fprintln(opts.IO.Out, cs.SuccessIcon, "Logged out")
+	} else {
+		fmt.Fprintln(opts.IO.Out, cs.WarningIcon, "No stored token to remove")
+	}
+
+	cmdutils.WarnEnvTokenAfterLogout(opts.IO)
 
 	return nil
 }

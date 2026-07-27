@@ -17,6 +17,7 @@ import (
 type Status struct {
 	LoggedIn       bool
 	APIOperational bool
+	TokenSource    auth.Source
 	User           *asana.User
 	WorkspaceID    string
 	WorkspaceName  string
@@ -76,12 +77,15 @@ func runStatus(opts *StatusOptions) error {
 func getStatus(opts *StatusOptions) (*Status, error) {
 	status := &Status{}
 
-	token, err := auth.Get()
+	token, source, err := auth.GetWithSource()
 	if err != nil {
 		status.LoggedIn = false
 		return status, nil
 	}
 	status.LoggedIn = token != ""
+	if status.LoggedIn {
+		status.TokenSource = source
+	}
 
 	cfg, err := opts.Config()
 	if err != nil {
@@ -126,6 +130,12 @@ func printStatus(io *iostreams.IOStreams, status *Status) error {
 		fmt.Fprintf(io.Out, "%s %s\n", cs.SuccessIcon, cs.Bold("API is operational"))
 	} else {
 		fmt.Fprintf(io.Out, "%s %s\n", cs.ErrorIcon, cs.Bold("API is not responding"))
+	}
+
+	// Which credential is in play. An environment override is silent otherwise,
+	// which makes "but I logged in" impossible to debug.
+	if status.TokenSource != auth.SourceNone {
+		fmt.Fprintf(io.Out, "  Token source: %s\n", status.TokenSource.Describe())
 	}
 
 	if status.User != nil {
