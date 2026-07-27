@@ -1,7 +1,6 @@
 package view
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
 	"github.com/timwehrle/asana/pkg/iostreams"
+	"github.com/timwehrle/asana/pkg/taskjson"
 
 	"github.com/spf13/cobra"
 	"github.com/timwehrle/asana/internal/api/asana"
@@ -77,7 +77,7 @@ func viewRun(opts *ViewOptions) error {
 	// Non-interactive: view by task ID
 	if opts.TaskID != "" {
 		task := &asana.Task{ID: opts.TaskID}
-		if err := task.Fetch(client); err != nil {
+		if err := task.Fetch(client, taskjson.Options()); err != nil {
 			return fmt.Errorf("task %q not found: %w", opts.TaskID, err)
 		}
 		return displayDetails(task, opts.IO, opts.JSON)
@@ -110,7 +110,7 @@ func viewRun(opts *ViewOptions) error {
 		return err
 	}
 
-	if err := selectedTask.Fetch(client); err != nil {
+	if err := selectedTask.Fetch(client, taskjson.Options()); err != nil {
 		return fmt.Errorf("failed to load task details: %w", err)
 	}
 	return displayDetails(selectedTask, opts.IO, opts.JSON)
@@ -141,122 +141,7 @@ func displayDetails(task *asana.Task, io *iostreams.IOStreams, jsonOutput bool) 
 }
 
 func displayJSON(task *asana.Task, io *iostreams.IOStreams) error {
-	type jsonRef struct {
-		ID   string `json:"id"`
-		Name string `json:"name,omitempty"`
-	}
-	type jsonCustomField struct {
-		ID           string  `json:"id"`
-		Name         string  `json:"name"`
-		DisplayValue *string `json:"display_value"`
-	}
-	type jsonMembership struct {
-		Project *jsonRef `json:"project,omitempty"`
-		Section *jsonRef `json:"section,omitempty"`
-	}
-	type jsonTask struct {
-		ID              string             `json:"id"`
-		Name            string             `json:"name"`
-		ResourceSubtype string             `json:"resource_subtype,omitempty"`
-		Assignee        *jsonRef           `json:"assignee"`
-		Completed       *bool              `json:"completed"`
-		CompletedAt     string             `json:"completed_at,omitempty"`
-		CreatedAt       string             `json:"created_at,omitempty"`
-		ModifiedAt      string             `json:"modified_at,omitempty"`
-		DueOn           string             `json:"due_on,omitempty"`
-		DueAt           string             `json:"due_at,omitempty"`
-		StartOn         string             `json:"start_on,omitempty"`
-		Notes           string             `json:"notes,omitempty"`
-		Parent          *jsonRef           `json:"parent,omitempty"`
-		Projects        []*jsonRef         `json:"projects,omitempty"`
-		Tags            []*jsonRef         `json:"tags,omitempty"`
-		Memberships     []*jsonMembership  `json:"memberships,omitempty"`
-		CustomFields    []*jsonCustomField `json:"custom_fields,omitempty"`
-		Dependencies    []*jsonRef         `json:"dependencies,omitempty"`
-		Dependents      []*jsonRef         `json:"dependents,omitempty"`
-		Followers       []*jsonRef         `json:"followers,omitempty"`
-		Workspace       *jsonRef           `json:"workspace,omitempty"`
-		NumSubtasks     int32              `json:"num_subtasks"`
-		Liked           bool               `json:"liked"`
-		NumLikes        int32              `json:"num_likes"`
-		PermalinkURL    string             `json:"permalink_url,omitempty"`
-	}
-
-	jt := jsonTask{
-		ID:              task.ID,
-		Name:            task.Name,
-		ResourceSubtype: task.ResourceSubtype,
-		Completed:       task.Completed,
-		Notes:           task.Notes,
-		NumSubtasks:     task.NumSubtasks,
-		Liked:           task.Liked,
-		NumLikes:        task.NumLikes,
-		PermalinkURL:    task.PermalinkURL,
-	}
-
-	if task.Assignee != nil {
-		jt.Assignee = &jsonRef{ID: task.Assignee.ID, Name: task.Assignee.Name}
-	}
-	if task.Parent != nil {
-		jt.Parent = &jsonRef{ID: task.Parent.ID, Name: task.Parent.Name}
-	}
-	if task.Workspace != nil {
-		jt.Workspace = &jsonRef{ID: task.Workspace.ID, Name: task.Workspace.Name}
-	}
-	if task.DueOn != nil {
-		jt.DueOn = time.Time(*task.DueOn).Format("2006-01-02")
-	}
-	if task.DueAt != nil {
-		jt.DueAt = task.DueAt.Format(time.RFC3339)
-	}
-	if task.StartOn != nil {
-		jt.StartOn = time.Time(*task.StartOn).Format("2006-01-02")
-	}
-	if task.CreatedAt != nil {
-		jt.CreatedAt = task.CreatedAt.Format(time.RFC3339)
-	}
-	if task.ModifiedAt != nil {
-		jt.ModifiedAt = task.ModifiedAt.Format(time.RFC3339)
-	}
-	if task.CompletedAt != nil {
-		jt.CompletedAt = task.CompletedAt.Format(time.RFC3339)
-	}
-	for _, p := range task.Projects {
-		jt.Projects = append(jt.Projects, &jsonRef{ID: p.ID, Name: p.Name})
-	}
-	for _, t := range task.Tags {
-		jt.Tags = append(jt.Tags, &jsonRef{ID: t.ID, Name: t.Name})
-	}
-	for _, m := range task.Memberships {
-		jm := &jsonMembership{}
-		if m.Project != nil {
-			jm.Project = &jsonRef{ID: m.Project.ID, Name: m.Project.Name}
-		}
-		if m.Section != nil {
-			jm.Section = &jsonRef{ID: m.Section.ID, Name: m.Section.Name}
-		}
-		jt.Memberships = append(jt.Memberships, jm)
-	}
-	for _, cf := range task.CustomFields {
-		jt.CustomFields = append(jt.CustomFields, &jsonCustomField{
-			ID:           cf.ID,
-			Name:         cf.Name,
-			DisplayValue: cf.DisplayValue,
-		})
-	}
-	for _, d := range task.Dependencies {
-		jt.Dependencies = append(jt.Dependencies, &jsonRef{ID: d.ID, Name: d.Name})
-	}
-	for _, d := range task.Dependents {
-		jt.Dependents = append(jt.Dependents, &jsonRef{ID: d.ID, Name: d.Name})
-	}
-	for _, f := range task.Followers {
-		jt.Followers = append(jt.Followers, &jsonRef{ID: f.ID, Name: f.Name})
-	}
-
-	enc := json.NewEncoder(io.Out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(jt)
+	return taskjson.Write(io.Out, task)
 }
 
 func displayText(task *asana.Task, io *iostreams.IOStreams) error {
