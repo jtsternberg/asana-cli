@@ -14,6 +14,7 @@ import (
 	"github.com/timwehrle/asana/pkg/convert"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
+	"github.com/timwehrle/asana/pkg/htmlnotes"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
@@ -51,6 +52,8 @@ type UpdateOptions struct {
 	TaskID         string
 	Name           string
 	Description    string
+	HTMLNotes      string
+	MarkdownNotes  string
 	Due            string
 	Assignee       string
 	Followers      []string
@@ -80,8 +83,25 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 	cmd := &cobra.Command{
 		Use:   "update [task-id]",
 		Short: "Update details of a specific task",
-		Long:  "Update a task interactively or via flags with a task ID.",
-		Args:  cobra.MaximumNArgs(1),
+		Long: heredoc.Doc(`
+			Update a task interactively or via flags with a task ID.
+
+			A task ID is required whenever prompts are unavailable -- that is,
+			when stdin is not a terminal or --non-interactive is passed.
+
+			A new description can be given in one of three mutually exclusive
+			forms: --description for plain text, --markdown-notes for Markdown,
+			or --html-notes for Asana-flavored HTML. Either of the latter two
+			replaces the description with rich text, giving you working links,
+			lists and emphasis.
+
+			Asana accepts only these HTML elements, and only <a> and <img> may
+			carry attributes: body strong em u s code ol ul li a blockquote pre
+			h1 h2 hr img. --html-notes is checked against those rules locally,
+			before any request is made. <a data-asana-gid="123"/> becomes an
+			@-mention.
+		`),
+		Args: cobra.MaximumNArgs(1),
 		Example: heredoc.Doc(`
 			# Interactive mode
 			$ asana tasks update
@@ -90,6 +110,11 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 			$ asana tasks update 1234567890 --name "New name" --due 2026-04-01
 			$ asana tasks update 1234567890 --complete
 			$ asana tasks update 1234567890 --assignee "Chris Christoff" --followers "Tom McFarlin"
+
+			# Replace the description with rich text
+			$ asana tasks update 1234567890 --markdown-notes "Now with a [link](https://example.com)"
+			$ asana tasks update 1234567890 --markdown-notes @notes.md
+			$ generate-notes | asana tasks update 1234567890 --markdown-notes -
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 1 {
@@ -103,7 +128,9 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 	}
 
 	cmd.Flags().StringVarP(&opts.Name, "name", "n", "", "New task name")
-	cmd.Flags().StringVarP(&opts.Description, "description", "m", "", "New task description")
+	cmd.Flags().StringVarP(&opts.Description, "description", "m", "", "New task description (plain text)")
+	cmd.Flags().StringVar(&opts.HTMLNotes, "html-notes", "", "New task description as Asana-flavored HTML; pass @file to read a file or - for stdin")
+	cmd.Flags().StringVar(&opts.MarkdownNotes, "markdown-notes", "", "New task description as Markdown, converted to rich text; pass @file to read a file or - for stdin")
 	cmd.Flags().StringVarP(&opts.Due, "due", "d", "", "New due date (YYYY-MM-DD, 'today', 'tomorrow')")
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "New assignee name or 'me'")
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs to add")
@@ -113,6 +140,9 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
 	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
 	cmd.Flags().Lookup("cc").Hidden = true
+
+	// A task has one description; pick one representation of it.
+	cmd.MarkFlagsMutuallyExclusive("description", "html-notes", "markdown-notes")
 
 	return cmd
 }
@@ -129,6 +159,13 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 
 	if opts.TaskID == "" {
 		return fmt.Errorf("a task ID is required when not running interactively: asana tasks update <task-id> [flags]")
+	}
+
+	// Resolve and validate rich-text notes first: it needs no network access,
+	// and a rejected value should not cost a round trip to Asana.
+	htmlNotes, err := htmlnotes.Rich(opts.HTMLNotes, opts.MarkdownNotes, opts.IO.In)
+	if err != nil {
+		return err
 	}
 
 	cfg, err := opts.Config()
@@ -152,32 +189,11 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	}
 
 	req := &asana.UpdateTaskRequest{}
-	changes := []string{}
-
-	if opts.Name != "" {
-		req.TaskBase.Name = opts.Name
-		changes = append(changes, "name")
+	fieldChanges, err := applyFieldFlags(opts, htmlNotes, req)
+	if err != nil {
+		return err
 	}
-
-	if opts.Description != "" {
-		req.TaskBase.Notes = opts.Description
-		changes = append(changes, "description")
-	}
-
-	if opts.Due != "" {
-		dueDate, err := parseDueDate(opts.Due)
-		if err != nil {
-			return err
-		}
-		req.TaskBase.DueOn = dueDate
-		changes = append(changes, "due date")
-	}
-
-	if opts.Complete {
-		completed := true
-		req.TaskBase.Completed = &completed
-		changes = append(changes, "completed")
-	}
+	changes := append([]string{}, fieldChanges...)
 
 	if opts.Assignee != "" {
 		userID, err := resolveUserID(opts.Assignee, cfg, ws.ID, client)
@@ -199,12 +215,11 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	}
 
 	if len(changes) == 0 {
-		return fmt.Errorf("no updates specified; use flags like --name, --due, --complete, --assignee, --followers")
+		return fmt.Errorf("no updates specified; use flags like --name, --due, --complete, --assignee, --followers, --markdown-notes")
 	}
 
 	// Update task fields (everything except followers)
-	hasFieldUpdates := opts.Name != "" || opts.Description != "" || opts.Due != "" || opts.Complete || opts.Assignee != ""
-	if hasFieldUpdates {
+	if len(fieldChanges) > 0 || opts.Assignee != "" {
 		if err := task.Update(client, req); err != nil {
 			return fmt.Errorf("failed to update task: %w", err)
 		}
@@ -218,6 +233,13 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	}
 
 	opts.IO.Printf("%s Updated task %s (%s)\n", cs.SuccessIcon, cs.Bold(task.Name), strings.Join(changes, ", "))
+	if htmlNotes != "" {
+		kind := "html"
+		if opts.MarkdownNotes != "" {
+			kind = "markdown"
+		}
+		opts.IO.Printf("  %s rich text (%s, %d chars)\n", cs.Gray("Description:"), kind, len(htmlNotes))
+	}
 	if opts.Due != "" && req.TaskBase.DueOn != nil {
 		dueStr := format.Date(req.TaskBase.DueOn)
 		if keyword := dueDateKeyword(opts.Due); keyword != "" {
@@ -230,6 +252,44 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	}
 
 	return nil
+}
+
+// applyFieldFlags copies the flag-driven task fields onto req and returns a
+// human-readable list of what changed. It touches nothing that needs the API,
+// which is what makes it testable.
+func applyFieldFlags(opts *UpdateOptions, htmlNotes string, req *asana.UpdateTaskRequest) ([]string, error) {
+	var changes []string
+
+	if opts.Name != "" {
+		req.TaskBase.Name = opts.Name
+		changes = append(changes, "name")
+	}
+
+	switch {
+	case htmlNotes != "":
+		req.TaskBase.HTMLNotes = htmlNotes
+		changes = append(changes, "description")
+	case opts.Description != "":
+		req.TaskBase.Notes = opts.Description
+		changes = append(changes, "description")
+	}
+
+	if opts.Due != "" {
+		dueDate, err := parseDueDate(opts.Due)
+		if err != nil {
+			return nil, err
+		}
+		req.TaskBase.DueOn = dueDate
+		changes = append(changes, "due date")
+	}
+
+	if opts.Complete {
+		completed := true
+		req.TaskBase.Completed = &completed
+		changes = append(changes, "completed")
+	}
+
+	return changes, nil
 }
 
 func runInteractiveUpdate(opts *UpdateOptions) error {
