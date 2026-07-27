@@ -1,7 +1,14 @@
 # Variables
 APP_NAME=asana
 BUILD_DIR=build
-VERSION := $(shell git describe --tags --abbrev=0 --always)
+# Full describe, not --abbrev=0: a local build several commits past v3.3.2 must
+# not report itself as "3.3.2". It becomes v3.3.2-10-gabc1234, which is both
+# obviously not a release and pins the exact commit built. Releases take their
+# version from goreleaser, not from here.
+#
+# No --dirty: the sha already identifies the build, and an unrelated untracked
+# file would otherwise pin "-dirty" on permanently, where it says nothing.
+VERSION := $(shell git describe --tags --always)
 LDFLAGS := -ldflags "-X github.com/timwehrle/asana/internal/build.Version=${VERSION} \
 					-X github.com/timwehrle/asana/internal/build.Date=${shell date -u +%Y-%m-%dT%H:%M:%SZ}"
 
