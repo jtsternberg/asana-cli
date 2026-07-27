@@ -10,6 +10,7 @@ import (
 	"github.com/timwehrle/asana/internal/api/asana"
 	"github.com/timwehrle/asana/internal/config"
 	"github.com/timwehrle/asana/internal/prompter"
+	"github.com/timwehrle/asana/pkg/cmdutils"
 	"github.com/timwehrle/asana/pkg/convert"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
@@ -33,6 +34,7 @@ type CreateOptions struct {
 	Section        string
 	Followers      []string
 	NonInteractive bool
+	DryRun         bool
 }
 
 // hasRichNotes reports whether a rich-text description was supplied, in which
@@ -91,6 +93,9 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 			@-mention.
 		`),
 		Example: heredoc.Doc(`
+			# Rehearse: resolve assignee, project and section, print the request, create nothing
+			$ asana tasks create --dry-run -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes @notes.md
+
 			# Fully specified, no prompts
 			$ asana tasks create -n "Ship the thing" -a "Chris Christoff" -p "Outgoing Tasks" -s "Chris" -m "Plain text notes"
 
@@ -127,6 +132,7 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Section, "section", "s", "", "Section name or ID")
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve everything and print the request without creating the task")
 
 	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
 	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
@@ -233,6 +239,10 @@ func runCreate(opts *CreateOptions) error {
 	}
 	if err := req.Validate(); err != nil {
 		return fmt.Errorf("task validation failed: %w", err)
+	}
+
+	if opts.DryRun {
+		return cmdutils.PrintDryRun(opts.IO, "POST /tasks", req)
 	}
 
 	task, err := client.CreateTask(req)

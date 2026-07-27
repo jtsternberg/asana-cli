@@ -19,6 +19,8 @@ asana tasks update <task-id> \
 
 5. **Verify the output** — confirm the success message lists all expected changes. If one is missing, investigate.
 
+Add `--dry-run` to print the exact request body and change nothing — useful for checking a resolved assignee or the HTML your Markdown produced before overwriting a description.
+
 ## The task ID is required
 
 There is no flag-driven update without a task ID. When prompts are unavailable — stdin not a terminal (always the case from a tool call), or `--non-interactive` — omitting the ID fails with:

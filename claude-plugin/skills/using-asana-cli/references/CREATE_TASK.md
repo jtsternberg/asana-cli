@@ -23,6 +23,8 @@ asana tasks create --non-interactive \
 
 7. **Verify the output** — confirm the success message includes all expected fields (name, assignee, due date, followers, URL). If a field is missing, investigate.
 
+Unsure a name will match, or want to see what your Markdown became? Add `--dry-run` first. It resolves assignee, project and section for real and prints the exact request body without creating anything, then re-run without the flag.
+
 ## Non-interactive mode
 
 `--non-interactive` is in the example on purpose. It is **not** strictly required — the CLI also skips prompts when stdin is not a terminal (always the case from a tool call) or when `--name`, `--assignee` and `--project` are all supplied. But pass it anyway: it makes the intent explicit and does not depend on how the calling shell wired stdin.

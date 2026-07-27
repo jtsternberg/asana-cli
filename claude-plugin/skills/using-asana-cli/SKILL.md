@@ -89,6 +89,26 @@ asana tasks create -n "Task" -a "Chris" -p "Outgoing Tasks" --non-interactive \
 generate-notes | asana tasks update 1234567890 --markdown-notes -
 ```
 
+#### Check your work before writing: `--dry-run`
+
+`tasks create` and `tasks update` both take `--dry-run`. It resolves everything for real — assignee, project, section, the generated HTML — prints the exact request body, and **sends nothing**. Use it when you are unsure a name will match or want to see what your Markdown became:
+
+```bash
+asana tasks create --dry-run -n "Task" -a "Chris" -p "Outgoing Tasks" -s "Chris" \
+  --markdown-notes @/tmp/notes.md
+```
+
+```
+! Dry run: no request was made
+  Would send: POST /tasks
+{
+  "name": "Task",
+  "html_notes": "<body>Two things:\n\n<ul><li>The <strong>build</strong> is green again</li>...</ul></body>",
+  "assignee": "254661480465843",
+  ...
+}
+```
+
 #### Markdown → Asana conversion
 
 Supported: `#`/`##` headings, `-`/`*`/`+` and `1.` lists (including nesting), `**bold**`, `*italic*`, `` `code` ``, `~~strike~~`, `[text](url)`, `<https://autolink>`, `> blockquotes`, fenced code blocks, and `---`.

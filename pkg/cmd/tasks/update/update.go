@@ -11,6 +11,7 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
 	"github.com/timwehrle/asana/internal/api/asana"
+	"github.com/timwehrle/asana/pkg/cmdutils"
 	"github.com/timwehrle/asana/pkg/convert"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
@@ -59,6 +60,7 @@ type UpdateOptions struct {
 	Followers      []string
 	Complete       bool
 	NonInteractive bool
+	DryRun         bool
 }
 
 // isNonInteractive returns true when prompts should be suppressed: an explicit
@@ -111,6 +113,9 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 			$ asana tasks update 1234567890 --complete
 			$ asana tasks update 1234567890 --assignee "Chris Christoff" --followers "Tom McFarlin"
 
+			# Rehearse: print the request, change nothing
+			$ asana tasks update 1234567890 --dry-run --markdown-notes @notes.md
+
 			# Replace the description with rich text
 			$ asana tasks update 1234567890 --markdown-notes "Now with a [link](https://example.com)"
 			$ asana tasks update 1234567890 --markdown-notes @notes.md
@@ -136,6 +141,7 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs to add")
 	cmd.Flags().BoolVar(&opts.Complete, "complete", false, "Mark task as completed")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
+	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve everything and print the request without updating the task")
 
 	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
 	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
@@ -216,6 +222,13 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 
 	if len(changes) == 0 {
 		return fmt.Errorf("no updates specified; use flags like --name, --due, --complete, --assignee, --followers, --markdown-notes")
+	}
+
+	if opts.DryRun {
+		if len(followerIDs) > 0 {
+			req.Followers = followerIDs // shown for inspection; sent separately for real
+		}
+		return cmdutils.PrintDryRun(opts.IO, fmt.Sprintf("PUT /tasks/%s", opts.TaskID), req)
 	}
 
 	// Update task fields (everything except followers)
