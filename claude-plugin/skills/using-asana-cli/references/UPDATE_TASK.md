@@ -59,6 +59,12 @@ Markdown coverage and the html_notes element allowlist are in SKILL.md under "Ri
 
 **Read the existing description first if you mean to amend rather than replace it** — `asana tasks view <task-id> --json | jq -r .notes`. There is no append mode.
 
+## Known gap: update cannot clear an assignee
+
+`tasks create` can make an unassigned task (`--unassigned`), but **`tasks update` cannot remove an existing assignee.** `-a ""` is treated as "no assignee change" and you get `Error: no updates specified`. Reassigning to a different person works fine; only clearing does not.
+
+If you're asked to unassign a task, **say that the CLI can't do it** rather than quietly reaching for the MCP connector — see "Two transports reach this workspace" in SKILL.md. Deliberately using the connector for this, and saying so, is fine; switching silently is the failure mode.
+
 ## Guard rails
 
 - If task not found, ask the user to verify the ID
