@@ -2,6 +2,7 @@ package login
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/google/shlex"
@@ -93,4 +94,86 @@ func TestNewCmdLogin(t *testing.T) {
 			require.Equal(t, tt.wants.Interactive, gotOpts.Interactive)
 		})
 	}
+}
+
+// --- Credential persistence ordering (asana-cli-a3d) ---
+
+// recordingWriter captures the order of the side effects a login leaves behind.
+type recordingWriter struct {
+	calls       []string
+	storedToken string
+	setErr      error
+	saveErr     error
+	deleteErr   error
+}
+
+func (w *recordingWriter) writer() credentialWriter {
+	return credentialWriter{
+		setToken: func(token string) error {
+			w.calls = append(w.calls, "setToken")
+			if w.setErr != nil {
+				return w.setErr
+			}
+			w.storedToken = token
+			return nil
+		},
+		saveConfig: func() error {
+			w.calls = append(w.calls, "saveConfig")
+			return w.saveErr
+		},
+		deleteToken: func() (bool, error) {
+			w.calls = append(w.calls, "deleteToken")
+			if w.deleteErr != nil {
+				return false, w.deleteErr
+			}
+			w.storedToken = ""
+			return true, nil
+		},
+	}
+}
+
+func TestPersistLogin_StoresTokenBeforeConfig(t *testing.T) {
+	w := &recordingWriter{}
+
+	if err := persistLogin("1/abc", w.writer()); err != nil {
+		t.Fatalf("persistLogin: %v", err)
+	}
+
+	// The order is the point: a config on disk with no token behind it is the
+	// one half-state nothing recovers from.
+	require.Equal(t, []string{"setToken", "saveConfig"}, w.calls)
+	require.Equal(t, "1/abc", w.storedToken)
+}
+
+func TestPersistLogin_ConfigFailureRollsTheTokenBack(t *testing.T) {
+	w := &recordingWriter{saveErr: errors.New("disk full")}
+
+	err := persistLogin("1/abc", w.writer())
+	if err == nil {
+		t.Fatal("expected an error when the config cannot be saved")
+	}
+	require.ErrorContains(t, err, "disk full")
+	require.Equal(t, []string{"setToken", "saveConfig", "deleteToken"}, w.calls)
+	require.Empty(t, w.storedToken, "a failed login should leave no token behind")
+}
+
+func TestPersistLogin_TokenFailureNeverReachesTheConfig(t *testing.T) {
+	w := &recordingWriter{setErr: errors.New("keyring locked")}
+
+	err := persistLogin("1/abc", w.writer())
+	require.ErrorContains(t, err, "keyring locked")
+	require.Equal(t, []string{"setToken"}, w.calls)
+}
+
+// A rollback that itself fails must not hide either failure: the user has to
+// know a token was left in the keyring.
+func TestPersistLogin_FailedRollbackReportsBothFailures(t *testing.T) {
+	w := &recordingWriter{
+		saveErr:   errors.New("disk full"),
+		deleteErr: errors.New("keyring locked"),
+	}
+
+	err := persistLogin("1/abc", w.writer())
+	require.ErrorContains(t, err, "disk full")
+	require.ErrorContains(t, err, "keyring locked")
 }

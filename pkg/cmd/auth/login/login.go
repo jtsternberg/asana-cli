@@ -101,6 +101,54 @@ func NewCmdLogin(f factory.Factory, runF func(*LoginOptions) error) *cobra.Comma
 	return cmd
 }
 
+// credentialWriter is the pair of side effects a completed login leaves behind:
+// the token in the keyring and the config on disk, plus the means to undo the
+// first. It is a struct of functions so persistLogin's ordering and rollback can
+// be tested without a real keyring or a real home directory.
+type credentialWriter struct {
+	setToken    func(string) error
+	saveConfig  func() error
+	deleteToken func() (bool, error)
+}
+
+func defaultCredentialWriter(cfg *config.Config) credentialWriter {
+	return credentialWriter{
+		setToken:    auth.Set,
+		saveConfig:  cfg.Save,
+		deleteToken: auth.DeleteStored,
+	}
+}
+
+// persistLogin stores the token first and the config second.
+//
+// The other order leaves a config on disk with nothing behind it whenever the
+// keyring write fails — a locked keyring, no Secret Service, or the 3s timeout in
+// internal/auth. That is the one half-state nothing recovers from: `auth status`
+// reads the config and reports a user and a workspace while every command fails
+// to authenticate, and `auth login` finds no stored token so it starts over
+// instead of naming the problem.
+//
+// Failing the other way is already handled: runLogin's opening check loads the
+// config after finding a stored token and clears the token when that load fails.
+// Should the config write fail anyway, the token is rolled back, so a failed
+// login leaves nothing at all rather than half of a login.
+func persistLogin(token string, w credentialWriter) error {
+	if err := w.setToken(token); err != nil {
+		return err
+	}
+
+	if err := w.saveConfig(); err != nil {
+		if _, delErr := w.deleteToken(); delErr != nil {
+			// Neither failure may be hidden: the token is still in the keyring
+			// and the user is the only one who can clear it.
+			return fmt.Errorf("%w (the stored token could not be rolled back: %v)", err, delErr)
+		}
+		return err
+	}
+
+	return nil
+}
+
 func runLogin(opts *LoginOptions) error {
 	cs := opts.IO.ColorScheme()
 
@@ -210,13 +258,7 @@ func runLogin(opts *LoginOptions) error {
 		Workspace: selectedWorkspace,
 	}
 
-	err = cfg.Save()
-	if err != nil {
-		return err
-	}
-
-	err = auth.Set(token)
-	if err != nil {
+	if err := persistLogin(token, defaultCredentialWriter(cfg)); err != nil {
 		return err
 	}
 
