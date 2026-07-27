@@ -11,14 +11,14 @@ A command-line interface for managing Asana tasks, projects, time tracking, and 
 ## Features
 
 - **Interactive and non-interactive modes** — use interactively with prompts, or pass flags for scripting and CI/CD
-- **Structured JSON output** — `--json` on `list`, `search`, and `view` for piping into `jq` or other tools
+- **Structured JSON output** — `--json` on `create`, `list`, `search`, and `view`, all in one identical task shape, for piping into `jq` or other tools
 - **Fuzzy name matching** — assignee, project, section, and follower flags match by partial name, exact name, or Asana GID
 - **Task CRUD** — create, view, update, delete, list, and search tasks
 - **Project management** — list projects, sections, and tasks (optionally grouped by section)
 - **Time tracking** — log time, check status, delete entries
 - **Teams, users, and tags** — list and filter workspace members and tags
 - **Self-update** — `asana upgrade` detects your install method and updates in-place with checksum verification
-- **Secure credential storage** — system keyring integration (macOS, Linux, Windows, WSL2)
+- **Secure credential storage** — system keyring integration (macOS, Linux, Windows, WSL2), with an `ASANA_TOKEN` environment override for headless and containerized runs
 - **Claude Code plugin** — AI-assisted task management with skills, commands, and an autonomous agent
 
 ## Installation
@@ -149,14 +149,31 @@ Task IDs are shown in `list` and `search` output for easy use with other command
 
 ### JSON Output
 
-All task commands (`list`, `search`, `view`, `comments`) support `--json` for machine-readable output:
+All task commands (`create`, `list`, `search`, `view`, `comments`) support `--json` for machine-readable output:
 
 ```bash
-asana tasks list --json                 # JSON array of {id, name, due_on}
+asana tasks create -n "Ship it" -a me -p "Outgoing Tasks" --json  # The created task
+asana tasks list --json                 # JSON array of tasks
 asana tasks search --query "bug" --json # Search results as JSON
 asana tasks view <task-id> --json       # Full task details as JSON
 asana tasks comments <task-id> --json   # Task comments as JSON
 ```
+
+`create`, `list`, `search` and `view` all emit the same task shape, so one parser
+handles all of them — including creating a task and re-fetching it later:
+
+```bash
+id=$(asana tasks create -n "Ship it" -a me -p "Outgoing Tasks" --json | jq -r .id)
+asana tasks view "$id" --json
+```
+
+The identifier key is `id`, not Asana's `gid`. `html_notes` carries the rich-text
+form of the description. Adding `--json` to `--dry-run` prints just the request
+payload, with no prose around it.
+
+A task that has been deleted in Asana makes `asana tasks view <id>` exit 1 with
+`404: task: Not a recognized ID` on stderr and nothing on stdout, which is how a
+script can detect deletions after the fact.
 
 ### Name Matching
 
@@ -229,6 +246,20 @@ The `asana` CLI must be installed and authenticated (`asana auth login`) before 
 ## Security
 
 Credentials are stored in your system's keyring — your Personal Access Token is never written to disk in plain text. Keyring integration works across macOS, Linux, Windows, and WSL2.
+
+### Environment override
+
+`ASANA_TOKEN` (or its alias `ASANA_PAT`) takes precedence over the keyring, and
+when it is set the keyring is not consulted at all:
+
+```bash
+ASANA_TOKEN=1/1234:abcd asana tasks list
+```
+
+This is how to run the CLI where a keyring is absent or locked — containers, CI,
+and unattended jobs on a headless box under cron or a systemd timer. `asana auth
+status` reports which source the token came from, and `auth login`/`auth logout`
+warn when an override is in play, since it outranks anything they store or remove.
 
 ## License
 

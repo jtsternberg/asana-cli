@@ -66,6 +66,12 @@ asana auth status
 
 If not authenticated, run `asana auth login` and follow the prompts.
 
+`auth status` reports which source the token came from. `ASANA_TOKEN` (alias
+`ASANA_PAT`) takes precedence over the keyring, and when it is set the keyring is
+not consulted at all — that is how the CLI runs where no keyring is available
+(containers, CI, unattended jobs on a headless box). If a user reports that
+`auth login` "did not take", check for one of those variables first.
+
 ## Task Management
 
 ### Create a task (non-interactive)
@@ -250,7 +256,7 @@ asana tasks search --help
 ## Structured Output
 
 Most commands support `--json` for machine-readable output:
-- **Tasks:** `list`, `search`, `view`, `comments`
+- **Tasks:** `create`, `list`, `search`, `view`, `comments`
 - **Projects:** `list`, `sections`, `tasks`
 - **Users:** `list`
 - **Teams:** `list`
@@ -260,7 +266,17 @@ Most commands support `--json` for machine-readable output:
 
 JSON output includes all available fields from the API (assignee, completion status, custom fields, dates, etc.). Pipe to `jq` for filtering:
 
+`tasks create`, `list`, `search` and `view` all emit the **same task shape**, so
+one parser handles all of them. The identifier key is `id`, not Asana's `gid`, and
+`html_notes` carries the rich-text form of the description.
+
 ```bash
+# Capture the ID of a task you just created, without scraping the URL line
+asana tasks create -n "Ship it" -a me -p "Outgoing Tasks" --json | jq -r .id
+
+# Just the request payload, no prose (combine --dry-run with --json)
+asana tasks create --dry-run --json -n "Ship it" -a me -p "Outgoing Tasks"
+
 # Get all task IDs from search results
 asana tasks search --query "deploy" --json | jq '.[].id'
 
@@ -281,6 +297,14 @@ asana users list --json | jq '.[] | select(.email | test("tom"; "i"))'
 ```
 
 Text output also includes rich data: task list/search show assignee, due date, projects, and completion status alongside the task name and ID.
+
+### Detecting a deleted task
+
+A task deleted in Asana makes `asana tasks view <id> --json` exit 1 with
+`404: task: Not a recognized ID: <id>` on **stderr** and nothing on stdout. Other
+failures (bad token, network) produce different messages, so 404 is a usable
+deletion signal. It does not distinguish a deleted task from a GID that never
+existed, which is fine when checking IDs the CLI itself reported.
 
 ## Project Management
 
