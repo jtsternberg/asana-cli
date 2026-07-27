@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [3.5.0] - 2026-07-27
 
 ### Added
 
@@ -15,6 +15,16 @@
 - **`tasks list` and `workspaces list` no longer print `Tasks for :`** — the username comes from the config file, so an environment-configured machine has none. The heading now omits the subject instead of interpolating an empty one.
 
 - **`auth status` no longer reports "No default workspace configured" when one is in force** — it read `cfg.Workspace` directly and so could not see the environment override.
+
+- **`asana --version` printed a link that 404s, to the wrong project** — the banner pointed at `timwehrle/asana`, the archived repository this one forked from, and dropped the `v` from the tag. It now points at this repository's release for the running version.
+
+- **`tasks create --json` flag help rendered as though the flag took an argument** — Cobra reads backticked text in a usage string as the value placeholder name.
+
+### Changed
+
+- **The Go module is now `github.com/jtsternberg/asana-cli`** — it was still `github.com/timwehrle/asana`, so every import path and both sets of build ldflags named a project that does not ship this code. The reason to leave it alone would have been upstream merge conflicts on every import block; upstream was archived in May 2026 and this repository has never merged from it, so that cost is gone. No effect on anyone installing from a release; `go install github.com/timwehrle/asana/cmd/asana@latest` no longer resolves to this project.
+
+- **Security and conduct reports no longer go to the upstream author** — `SECURITY.md` sent vulnerability reports to the archived upstream maintainer's personal email. It now uses this repository's GitHub private vulnerability reporting, and says explicitly not to send reports upstream. `CODE_OF_CONDUCT.md` named the same address for enforcement.
 
 ## [3.4.0] - 2026-07-27
 
