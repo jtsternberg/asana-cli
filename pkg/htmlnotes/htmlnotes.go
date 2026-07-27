@@ -176,6 +176,30 @@ func Resolve(value string, stdin io.Reader) (string, error) {
 	}
 }
 
+// Rich resolves whichever rich-text description flag a command was given into a
+// ready-to-send html_notes value, returning "" when neither was supplied. Both
+// forms accept the location syntax documented on Resolve.
+func Rich(html, markdown string, stdin io.Reader) (string, error) {
+	switch {
+	case html != "" && markdown != "":
+		return "", fmt.Errorf("--html-notes and --markdown-notes are mutually exclusive")
+	case html != "":
+		raw, err := Resolve(html, stdin)
+		if err != nil {
+			return "", err
+		}
+		return Normalize(raw)
+	case markdown != "":
+		raw, err := Resolve(markdown, stdin)
+		if err != nil {
+			return "", err
+		}
+		return FromMarkdown(raw)
+	default:
+		return "", nil
+	}
+}
+
 // xmlEntity matches the entity references XML itself understands: the five
 // predefined names plus numeric character references.
 var xmlEntity = regexp.MustCompile(`^&(?:amp|lt|gt|apos|quot|#[0-9]+|#[xX][0-9a-fA-F]+);`)

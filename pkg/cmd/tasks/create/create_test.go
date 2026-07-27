@@ -217,6 +217,63 @@ func TestGetOrPromptDueDate_Invalid(t *testing.T) {
 	}
 }
 
+func TestNewCmdCreate_RichNotesFlags(t *testing.T) {
+	f, _, _ := factory.NewTestFactory()
+
+	var sawOpts *CreateOptions
+	cmd := NewCmdCreate(f, func(opts *CreateOptions) error {
+		sawOpts = opts
+		return nil
+	})
+
+	cmd.SetArgs([]string{
+		"--name", "My Task",
+		"--assignee", "me",
+		"--project", "P",
+		"--html-notes", "<body>hi</body>",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if sawOpts.HTMLNotes != "<body>hi</body>" {
+		t.Errorf("HTMLNotes = %q", sawOpts.HTMLNotes)
+	}
+
+	cmd = NewCmdCreate(f, func(opts *CreateOptions) error {
+		sawOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--name", "n", "--markdown-notes", "@notes.md"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if sawOpts.MarkdownNotes != "@notes.md" {
+		t.Errorf("MarkdownNotes = %q", sawOpts.MarkdownNotes)
+	}
+}
+
+func TestNewCmdCreate_NotesFlagsAreMutuallyExclusive(t *testing.T) {
+	pairs := [][]string{
+		{"--description", "plain", "--html-notes", "<body>x</body>"},
+		{"--description", "plain", "--markdown-notes", "x"},
+		{"--html-notes", "<body>x</body>", "--markdown-notes", "x"},
+	}
+
+	for _, pair := range pairs {
+		f, _, _ := factory.NewTestFactory()
+		cmd := NewCmdCreate(f, func(opts *CreateOptions) error { return nil })
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs(append([]string{"--name", "n"}, pair...))
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+			t.Fatalf("%v: expected a mutual-exclusion error, got %v", pair, err)
+		}
+	}
+}
+
 func TestIsNonInteractive(t *testing.T) {
 	tests := []struct {
 		name string
@@ -306,5 +363,47 @@ func TestPromptDescription_EOFMeansNoDescription(t *testing.T) {
 	}
 	if got != "" {
 		t.Fatalf("description = %q; want empty", got)
+	}
+}
+
+// Rich notes are a description, so don't turn around and ask for one.
+func TestPromptDescription_SkippedWhenRichNotesGiven(t *testing.T) {
+	for _, opts := range []*CreateOptions{
+		{IO: ttyIO(), Prompter: &explodingPrompter{t: t}, HTMLNotes: "<body>hi</body>"},
+		{IO: ttyIO(), Prompter: &explodingPrompter{t: t}, MarkdownNotes: "**hi**"},
+	} {
+		got, err := getOrPromptDescription(opts, false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Fatalf("description = %q; want empty", got)
+		}
+	}
+}
+
+// A bad html_notes value must fail before any Asana request is made.
+func TestRunCreate_InvalidHTMLNotesFailsBeforeAnyRequest(t *testing.T) {
+	io, _, _, _ := iostreams.Test()
+
+	opts := &CreateOptions{
+		IO:        io,
+		Name:      "Task",
+		Assignee:  "me",
+		Project:   "P",
+		HTMLNotes: "<body><p>nope</p></body>",
+		Config: func() (*config.Config, error) {
+			t.Fatal("config should not be loaded when the notes are invalid")
+			return nil, nil
+		},
+		Client: func() (*asana.Client, error) {
+			t.Fatal("client should not be built when the notes are invalid")
+			return nil, nil
+		},
+	}
+
+	err := runCreate(opts)
+	if err == nil || !strings.Contains(err.Error(), "<p> is not allowed") {
+		t.Fatalf("expected an html-notes validation error, got %v", err)
 	}
 }

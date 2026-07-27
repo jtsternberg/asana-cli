@@ -181,6 +181,67 @@ func TestNormalize(t *testing.T) {
 	}
 }
 
+func TestRich(t *testing.T) {
+	tests := []struct {
+		name     string
+		html     string
+		markdown string
+		stdin    string
+		want     string
+		wantErr  string
+	}{
+		{
+			name: "neither flag",
+			want: "",
+		},
+		{
+			name: "html is normalized",
+			html: "<strong>hi</strong>",
+			want: "<body><strong>hi</strong></body>",
+		},
+		{
+			name:     "markdown is converted",
+			markdown: "- a\n- b",
+			want:     "<body><ul><li>a</li><li>b</li></ul></body>",
+		},
+		{
+			name:     "markdown from stdin",
+			markdown: "-",
+			stdin:    "**bold**",
+			want:     "<body><strong>bold</strong></body>",
+		},
+		{
+			name:     "both flags conflict",
+			html:     "<body>a</body>",
+			markdown: "a",
+			wantErr:  "mutually exclusive",
+		},
+		{
+			name:    "invalid html is rejected before any request",
+			html:    "<body><p>nope</p></body>",
+			wantErr: "<p> is not allowed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Rich(tt.html, tt.markdown, strings.NewReader(tt.stdin))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Rich() error = %v; want error containing %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Rich() error = %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("Rich() = %q; want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestResolve(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "notes.html")

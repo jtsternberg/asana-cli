@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MakeNowJust/heredoc"
 	"github.com/spf13/cobra"
 	"github.com/timwehrle/asana/internal/api/asana"
 	"github.com/timwehrle/asana/internal/config"
@@ -12,6 +13,7 @@ import (
 	"github.com/timwehrle/asana/pkg/convert"
 	"github.com/timwehrle/asana/pkg/factory"
 	"github.com/timwehrle/asana/pkg/format"
+	"github.com/timwehrle/asana/pkg/htmlnotes"
 	"github.com/timwehrle/asana/pkg/iostreams"
 )
 
@@ -25,10 +27,18 @@ type CreateOptions struct {
 	Assignee       string
 	Due            string
 	Description    string
+	HTMLNotes      string
+	MarkdownNotes  string
 	Project        string
 	Section        string
 	Followers      []string
 	NonInteractive bool
+}
+
+// hasRichNotes reports whether a rich-text description was supplied, in which
+// case there is nothing to ask about the plain-text one.
+func (o *CreateOptions) hasRichNotes() bool {
+	return o.HTMLNotes != "" || o.MarkdownNotes != ""
 }
 
 // isNonInteractive returns true when prompts should be suppressed.
@@ -61,7 +71,44 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new task",
-		Long:  "Create a new task in Asana.",
+		Long: heredoc.Doc(`
+			Create a new task in Asana.
+
+			Prompts are skipped when stdin is not a terminal, when
+			--non-interactive is passed, or when --name, --assignee and
+			--project are all supplied. Required values must then come from
+			flags; optional ones (due date, description) are simply left unset.
+
+			A description can be given in one of three mutually exclusive
+			forms: --description for plain text, --markdown-notes for Markdown,
+			or --html-notes for Asana-flavored HTML. The latter two produce a
+			rich-text description with working links, lists and emphasis.
+
+			Asana accepts only these HTML elements, and only <a> and <img> may
+			carry attributes: body strong em u s code ol ul li a blockquote pre
+			h1 h2 hr img. --html-notes is checked against those rules locally,
+			before any request is made. <a data-asana-gid="123"/> becomes an
+			@-mention.
+		`),
+		Example: heredoc.Doc(`
+			# Fully specified, no prompts
+			$ asana tasks create -n "Ship the thing" -a "Chris Christoff" -p "Outgoing Tasks" -s "Chris" -m "Plain text notes"
+
+			# Rich text from Markdown, which is usually what you want
+			$ asana tasks create -n "Ship the thing" -a "Chris Christoff" -p "Outgoing Tasks" \
+			    --markdown-notes "Two things:
+
+			- The **build** is green
+			- Details are [in slack](https://example.slack.com/archives/C1/p2)"
+
+			# Read the description from a file, or from stdin
+			$ asana tasks create -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes @notes.md
+			$ generate-notes | asana tasks create -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes -
+
+			# Hand-written Asana HTML
+			$ asana tasks create -n "Ship the thing" -a me -p "Outgoing Tasks" \
+			    --html-notes '<body>See <a href="https://example.com">the docs</a></body>'
+		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if runF != nil {
 				return runF(opts)
@@ -73,7 +120,9 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Name, "name", "n", "", "Task name")
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "Assignee name or 'me'")
 	cmd.Flags().StringVarP(&opts.Due, "due", "d", "", "Due date (YYYY-MM-DD, 'today', 'tomorrow')")
-	cmd.Flags().StringVarP(&opts.Description, "description", "m", "", "Task description")
+	cmd.Flags().StringVarP(&opts.Description, "description", "m", "", "Task description (plain text)")
+	cmd.Flags().StringVar(&opts.HTMLNotes, "html-notes", "", "Task description as Asana-flavored HTML; pass @file to read a file or - for stdin")
+	cmd.Flags().StringVar(&opts.MarkdownNotes, "markdown-notes", "", "Task description as Markdown, converted to rich text; pass @file to read a file or - for stdin")
 	cmd.Flags().StringVarP(&opts.Project, "project", "p", "", "Project name or ID")
 	cmd.Flags().StringVarP(&opts.Section, "section", "s", "", "Section name or ID")
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs")
@@ -83,12 +132,22 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
 	cmd.Flags().Lookup("cc").Hidden = true
 
+	// A task has one description; pick one representation of it.
+	cmd.MarkFlagsMutuallyExclusive("description", "html-notes", "markdown-notes")
+
 	return cmd
 }
 
 func runCreate(opts *CreateOptions) error {
 	cs := opts.IO.ColorScheme()
 	ni := opts.isNonInteractive()
+
+	// Resolve and validate rich-text notes first: it needs no network access,
+	// and a rejected value should not cost a round trip to Asana.
+	htmlNotes, err := htmlnotes.Rich(opts.HTMLNotes, opts.MarkdownNotes, opts.IO.In)
+	if err != nil {
+		return err
+	}
 
 	cfg, err := opts.Config()
 	if err != nil {
@@ -156,9 +215,10 @@ func runCreate(opts *CreateOptions) error {
 
 	req := &asana.CreateTaskRequest{
 		TaskBase: asana.TaskBase{
-			Name:  name,
-			DueOn: dueDate,
-			Notes: description,
+			Name:      name,
+			DueOn:     dueDate,
+			Notes:     description,
+			HTMLNotes: htmlNotes,
 		},
 		Workspace: ws.ID,
 		Assignee:  assignee.ID,
@@ -182,6 +242,13 @@ func runCreate(opts *CreateOptions) error {
 
 	opts.IO.Printf("%s Created task %s\n", cs.SuccessIcon, cs.Bold(task.Name))
 	opts.IO.Printf("  %s %s\n", cs.Gray("Assignee:"), assignee.Name)
+	if htmlNotes != "" {
+		kind := "html"
+		if opts.MarkdownNotes != "" {
+			kind = "markdown"
+		}
+		opts.IO.Printf("  %s rich text (%s, %d chars)\n", cs.Gray("Description:"), kind, len(htmlNotes))
+	}
 	if len(followerNames) > 0 {
 		opts.IO.Printf("  %s %s\n", cs.Gray("Followers:"), strings.Join(followerNames, ", "))
 	}
@@ -284,7 +351,7 @@ func getOrPromptDueDate(opts *CreateOptions, ni bool) (*asana.Date, error) {
 
 // getOrPromptDescription resolves the (optional) plain-text description.
 func getOrPromptDescription(opts *CreateOptions, ni bool) (string, error) {
-	if opts.Description != "" || ni {
+	if opts.Description != "" || opts.hasRichNotes() || ni {
 		return opts.Description, nil
 	}
 
