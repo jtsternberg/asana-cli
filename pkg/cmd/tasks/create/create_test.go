@@ -1,6 +1,7 @@
 package create
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -271,6 +272,197 @@ func TestNewCmdCreate_NotesFlagsAreMutuallyExclusive(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
 			t.Fatalf("%v: expected a mutual-exclusion error, got %v", pair, err)
 		}
+	}
+}
+
+func TestWantsUnassigned(t *testing.T) {
+	tests := []struct {
+		name string
+		opts *CreateOptions
+		want bool
+	}{
+		{
+			name: "no assignee information at all",
+			opts: &CreateOptions{},
+			want: false,
+		},
+		{
+			name: "explicit flag",
+			opts: &CreateOptions{Unassigned: true},
+			want: true,
+		},
+		{
+			name: "a name was given",
+			opts: &CreateOptions{Assignee: "me", assigneeFlagSet: true},
+			want: false,
+		},
+		{
+			// -a "" is what an agent reaches for first. Honor it.
+			name: "empty string passed explicitly",
+			opts: &CreateOptions{Assignee: "", assigneeFlagSet: true},
+			want: true,
+		},
+		{
+			// Absent is not the same as explicitly empty: omitting -a stays an
+			// error, so a script that forgot it does not silently produce an
+			// ownerless task.
+			name: "empty string because the flag was never passed",
+			opts: &CreateOptions{Assignee: ""},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.opts.wantsUnassigned(); got != tt.want {
+				t.Fatalf("wantsUnassigned() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewCmdCreate_UnassignedFlags(t *testing.T) {
+	f, _, _ := factory.NewTestFactory()
+
+	var sawOpts *CreateOptions
+	cmd := NewCmdCreate(f, func(opts *CreateOptions) error {
+		sawOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--name", "n", "--unassigned", "--no-project"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !sawOpts.Unassigned || !sawOpts.NoProject {
+		t.Fatalf("Unassigned = %v, NoProject = %v; want both true", sawOpts.Unassigned, sawOpts.NoProject)
+	}
+
+	// The command must record that -a was passed, even when passed empty.
+	cmd = NewCmdCreate(f, func(opts *CreateOptions) error {
+		sawOpts = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"--name", "n", "--assignee", ""})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !sawOpts.assigneeFlagSet {
+		t.Error(`assigneeFlagSet = false after -a ""; want true`)
+	}
+	if !sawOpts.wantsUnassigned() {
+		t.Error(`wantsUnassigned() = false after -a ""; want true`)
+	}
+}
+
+func TestNewCmdCreate_UnassignedConflicts(t *testing.T) {
+	conflicts := [][]string{
+		{"--assignee", "me", "--unassigned"},
+		{"--project", "P", "--no-project"},
+		{"--section", "S", "--no-project"},
+	}
+
+	for _, args := range conflicts {
+		f, _, _ := factory.NewTestFactory()
+		cmd := NewCmdCreate(f, func(opts *CreateOptions) error { return nil })
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs(append([]string{"--name", "n"}, args...))
+
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), "none of the others can be") {
+			t.Fatalf("%v: expected a mutual-exclusion error, got %v", args, err)
+		}
+	}
+}
+
+// The wall the blind test hit must point at the way through it.
+func TestRequiredFlagErrorsNameTheEscapeHatch(t *testing.T) {
+	io, _, _, _ := iostreams.Test()
+	base := func() *CreateOptions {
+		return &CreateOptions{
+			IO:   io,
+			Name: "Task",
+			Config: func() (*config.Config, error) {
+				return &config.Config{Workspace: &asana.Workspace{ID: "W1", Name: "WS"}}, nil
+			},
+			Client: func() (*asana.Client, error) { return &asana.Client{}, nil },
+		}
+	}
+
+	t.Run("assignee", func(t *testing.T) {
+		opts := base()
+		opts.NoProject = true
+		err := runCreate(opts)
+		if err == nil || !strings.Contains(err.Error(), "--assignee is required") {
+			t.Fatalf("got %v", err)
+		}
+		if !strings.Contains(err.Error(), "--unassigned") {
+			t.Fatalf("error should name --unassigned; got %v", err)
+		}
+	})
+
+	t.Run("project", func(t *testing.T) {
+		opts := base()
+		opts.Unassigned = true
+		err := runCreate(opts)
+		if err == nil || !strings.Contains(err.Error(), "--project is required") {
+			t.Fatalf("got %v", err)
+		}
+		if !strings.Contains(err.Error(), "--no-project") {
+			t.Fatalf("error should name --no-project; got %v", err)
+		}
+	})
+}
+
+// An unassigned, project-less create needs no lookups at all, so this drives
+// runCreate end to end and pins the dry-run payload the blind test never saw.
+func TestRunCreate_UnassignedNoProjectDryRun(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+
+	opts := &CreateOptions{
+		IO:            io,
+		Name:          "Where should RAD product feedback live?",
+		Unassigned:    true,
+		NoProject:     true,
+		DryRun:        true,
+		MarkdownNotes: "Two things:\n\n- a **bold** one\n- a [link](https://example.com)",
+		Config: func() (*config.Config, error) {
+			return &config.Config{Workspace: &asana.Workspace{ID: "W1", Name: "WS"}}, nil
+		},
+		Client: func() (*asana.Client, error) { return &asana.Client{}, nil },
+	}
+
+	if err := runCreate(opts); err != nil {
+		t.Fatalf("runCreate() error = %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "no request was made") {
+		t.Fatalf("expected a dry-run notice; got:\n%s", got)
+	}
+
+	start := strings.Index(got, "{")
+	if start < 0 {
+		t.Fatalf("no JSON payload; got:\n%s", got)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(got[start:]), &payload); err != nil {
+		t.Fatalf("payload is not valid JSON: %v\n%s", err, got[start:])
+	}
+
+	// No assignee, no projects, no memberships — but a workspace, which is what
+	// makes the task legal in Asana.
+	for _, absent := range []string{"assignee", "projects", "memberships"} {
+		if _, ok := payload[absent]; ok {
+			t.Errorf("payload should omit %q; got %v", absent, payload[absent])
+		}
+	}
+	if payload["workspace"] != "W1" {
+		t.Errorf("workspace = %v; want W1", payload["workspace"])
+	}
+	if payload["html_notes"] != "<body>Two things:\n\n<ul><li>a <strong>bold</strong> one</li><li>a <a href=\"https://example.com\">link</a></li></ul></body>" {
+		t.Errorf("html_notes = %v", payload["html_notes"])
 	}
 }
 

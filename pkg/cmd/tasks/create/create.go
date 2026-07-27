@@ -33,8 +33,21 @@ type CreateOptions struct {
 	Project        string
 	Section        string
 	Followers      []string
+	Unassigned     bool
+	NoProject      bool
 	NonInteractive bool
 	DryRun         bool
+
+	// assigneeFlagSet records whether --assignee appeared on the command line at
+	// all, which is the only way to tell `-a ""` ("clear the assignee") apart
+	// from omitting the flag ("you forgot something").
+	assigneeFlagSet bool
+}
+
+// wantsUnassigned reports whether the caller asked for a task with no assignee,
+// either with --unassigned or by passing --assignee explicitly empty.
+func (o *CreateOptions) wantsUnassigned() bool {
+	return o.Unassigned || (o.assigneeFlagSet && o.Assignee == "")
 }
 
 // hasRichNotes reports whether a rich-text description was supplied, in which
@@ -81,6 +94,12 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 			--project are all supplied. Required values must then come from
 			flags; optional ones (due date, description) are simply left unset.
 
+			Only --name is truly mandatory. Asana accepts a task with no
+			assignee and a task with no project, so --unassigned and
+			--no-project express those. Both are explicit on purpose: merely
+			omitting --assignee or --project stays an error, so a script that
+			forgot one does not quietly produce an ownerless or unfiled task.
+
 			A description can be given in one of three mutually exclusive
 			forms: --description for plain text, --markdown-notes for Markdown,
 			or --html-notes for Asana-flavored HTML. The latter two produce a
@@ -95,6 +114,12 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 		Example: heredoc.Doc(`
 			# Rehearse: resolve assignee, project and section, print the request, create nothing
 			$ asana tasks create --dry-run -n "Ship the thing" -a me -p "Outgoing Tasks" --markdown-notes @notes.md
+
+			# Unassigned, matching a section whose tasks are all unassigned
+			$ asana tasks create -n "Ship the thing" --unassigned -p "Outgoing Tasks" -s "Untitled section"
+
+			# A personal note filed nowhere: workspace-level, no project or section
+			$ asana tasks create -n "Call the bank" -a me --no-project
 
 			# Fully specified, no prompts
 			$ asana tasks create -n "Ship the thing" -a "Chris Christoff" -p "Outgoing Tasks" -s "Chris" -m "Plain text notes"
@@ -115,6 +140,7 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 			    --html-notes '<body>See <a href="https://example.com">the docs</a></body>'
 		`),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.assigneeFlagSet = cmd.Flags().Changed("assignee")
 			if runF != nil {
 				return runF(opts)
 			}
@@ -131,6 +157,8 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Project, "project", "p", "", "Project name or ID")
 	cmd.Flags().StringVarP(&opts.Section, "section", "s", "", "Section name or ID")
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs")
+	cmd.Flags().BoolVar(&opts.Unassigned, "unassigned", false, `Create the task with no assignee (same as --assignee "")`)
+	cmd.Flags().BoolVar(&opts.NoProject, "no-project", false, "Create the task in the workspace only, with no project or section")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve everything and print the request without creating the task")
 
@@ -140,6 +168,12 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 
 	// A task has one description; pick one representation of it.
 	cmd.MarkFlagsMutuallyExclusive("description", "html-notes", "markdown-notes")
+
+	// Naming someone and asking for nobody are contradictory, as are asking for
+	// no project and then naming a project or a section inside one.
+	cmd.MarkFlagsMutuallyExclusive("assignee", "unassigned")
+	cmd.MarkFlagsMutuallyExclusive("project", "no-project")
+	cmd.MarkFlagsMutuallyExclusive("section", "no-project")
 
 	return cmd
 }
@@ -183,10 +217,13 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("task name cannot be empty")
 	}
 
-	// --- Assignee ---
-	assignee, err := getOrSelectAssignee(opts, ni, cfg, ws.ID, client)
-	if err != nil {
-		return err
+	// --- Assignee (optional: Asana allows an unassigned task) ---
+	var assignee *asana.User
+	if !opts.wantsUnassigned() {
+		assignee, err = getOrSelectAssignee(opts, ni, cfg, ws.ID, client)
+		if err != nil {
+			return err
+		}
 	}
 
 	// --- Due date (optional) ---
@@ -201,16 +238,20 @@ func runCreate(opts *CreateOptions) error {
 		return err
 	}
 
-	// --- Project ---
-	project, err := getProject(opts, ni, ws.ID, client)
-	if err != nil {
-		return err
-	}
+	// --- Project and section (optional: a task may live in the workspace only) ---
+	var project *asana.Project
+	var section *asana.Section
+	if !opts.NoProject {
+		project, err = getProject(opts, ni, ws.ID, client)
+		if err != nil {
+			return err
+		}
 
-	// --- Section (defaults to first section when not specified in non-interactive mode) ---
-	section, err := getSection(opts, ni, project.ID, client)
-	if err != nil {
-		return err
+		// Section defaults to the first one when unspecified in non-interactive mode.
+		section, err = getSection(opts, ni, project.ID, client)
+		if err != nil {
+			return err
+		}
 	}
 
 	// --- Followers (optional) ---
@@ -227,15 +268,19 @@ func runCreate(opts *CreateOptions) error {
 			HTMLNotes: htmlNotes,
 		},
 		Workspace: ws.ID,
-		Assignee:  assignee.ID,
 		Followers: followerIDs,
-		Projects:  []string{project.ID},
-		Memberships: []*asana.CreateMembership{
+	}
+	if assignee != nil {
+		req.Assignee = assignee.ID
+	}
+	if project != nil {
+		req.Projects = []string{project.ID}
+		req.Memberships = []*asana.CreateMembership{
 			{
 				Project: project.ID,
 				Section: section.ID,
 			},
-		},
+		}
 	}
 	if err := req.Validate(); err != nil {
 		return fmt.Errorf("task validation failed: %w", err)
@@ -251,7 +296,16 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	opts.IO.Printf("%s Created task %s\n", cs.SuccessIcon, cs.Bold(task.Name))
-	opts.IO.Printf("  %s %s\n", cs.Gray("Assignee:"), assignee.Name)
+	// Always print the assignee line, including when there is none: "unassigned"
+	// is a result worth confirming, not an absence to leave the reader guessing at.
+	if assignee != nil {
+		opts.IO.Printf("  %s %s\n", cs.Gray("Assignee:"), assignee.Name)
+	} else {
+		opts.IO.Printf("  %s unassigned\n", cs.Gray("Assignee:"))
+	}
+	if project == nil {
+		opts.IO.Printf("  %s none (workspace-level task)\n", cs.Gray("Project:"))
+	}
 	if htmlNotes != "" {
 		kind := "html"
 		if opts.MarkdownNotes != "" {
@@ -277,6 +331,14 @@ func runCreate(opts *CreateOptions) error {
 }
 
 func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, workspaceID string, client *asana.Client) (*asana.User, error) {
+	// Decide whether there is anything to resolve before paying for the user
+	// list: with no name to match and no way to prompt, the fetch is wasted.
+	if opts.Assignee == "" && ni {
+		// Name the way through the wall. An agent that hits this without being
+		// told the escape hatch exists will conclude the CLI cannot do it.
+		return nil, fmt.Errorf(`--assignee is required in non-interactive mode; pass --unassigned (or --assignee "") to create the task with no assignee`)
+	}
+
 	ws := &asana.Workspace{ID: workspaceID}
 	users, _, err := ws.Users(client)
 	if err != nil {
@@ -329,10 +391,6 @@ func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, works
 		}
 
 		return nil, fmt.Errorf("assignee %q not found in workspace", opts.Assignee)
-	}
-
-	if ni {
-		return nil, fmt.Errorf("--assignee is required in non-interactive mode")
 	}
 
 	names := format.MapToStrings(users, func(u *asana.User) string {
@@ -429,6 +487,12 @@ func addDescription(opts *CreateOptions) (string, error) {
 }
 
 func getProject(opts *CreateOptions, ni bool, workspaceID string, client *asana.Client) (*asana.Project, error) {
+	// As with the assignee: nothing to match and no way to prompt means the
+	// project list would be fetched only to be thrown away.
+	if opts.Project == "" && ni {
+		return nil, fmt.Errorf("--project is required in non-interactive mode; pass --no-project to create a task that lives in the workspace only")
+	}
+
 	ws := &asana.Workspace{ID: workspaceID}
 	projects, err := ws.AllProjects(client)
 	if err != nil {
@@ -450,10 +514,6 @@ func getProject(opts *CreateOptions, ni bool, workspaceID string, client *asana.
 			}
 		}
 		return nil, fmt.Errorf("project %q not found in workspace", opts.Project)
-	}
-
-	if ni {
-		return nil, fmt.Errorf("--project is required in non-interactive mode")
 	}
 
 	names := format.MapToStrings(projects, func(p *asana.Project) string {
