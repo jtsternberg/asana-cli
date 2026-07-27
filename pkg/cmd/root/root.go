@@ -87,7 +87,7 @@ func NewCmdRoot(f factory.Factory, buildVersion string) (*cobra.Command, error) 
 	cmd.Version = buildVersion
 	cmd.SetVersionTemplate(heredoc.Doc(`
 	asana build {{ .Version }}
-	https://github.com/timwehrle/asana/releases/tag/{{ .Version }}
+	https://github.com/jtsternberg/asana-cli/releases/tag/{{ .Version }}
 	`))
 
 	return cmd, nil

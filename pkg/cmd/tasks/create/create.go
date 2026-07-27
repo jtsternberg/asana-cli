@@ -175,7 +175,7 @@ func NewCmdCreate(f factory.Factory, runF func(*CreateOptions) error) *cobra.Com
 	cmd.Flags().BoolVar(&opts.NoProject, "no-project", false, "Create the task in the workspace only, with no project or section")
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve everything and print the request without creating the task")
-	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format, identical to `tasks view --json`")
+	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format, identical to 'tasks view --json'")
 
 	// --cc is a natural alias for --followers (agents and humans reach for "CC" intuitively)
 	cmd.Flags().StringSliceVar(&opts.Followers, "cc", nil, "Alias for --followers")
