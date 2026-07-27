@@ -59,8 +59,38 @@ type UpdateOptions struct {
 	Assignee       string
 	Followers      []string
 	Complete       bool
+	Incomplete     bool
+	Unassigned     bool
+	NoDue          bool
+	NoDescription  bool
 	NonInteractive bool
 	DryRun         bool
+
+	// Whether each value flag appeared on the command line at all. Passing one
+	// explicitly empty (-a "") means "clear this"; omitting it means "leave it
+	// alone", and the value alone cannot tell the two apart.
+	assigneeFlagSet    bool
+	dueFlagSet         bool
+	descriptionFlagSet bool
+}
+
+// wantsClear returns the fields this invocation asks to blank out, in a stable
+// order. Each has two spellings: an explicit --no-* flag, and passing the value
+// flag empty.
+func (o *UpdateOptions) wantsClear() []asana.ClearableField {
+	var clear []asana.ClearableField
+
+	if o.Unassigned || (o.assigneeFlagSet && o.Assignee == "") {
+		clear = append(clear, asana.ClearAssignee)
+	}
+	if o.NoDue || (o.dueFlagSet && o.Due == "") {
+		clear = append(clear, asana.ClearDueDate)
+	}
+	if o.NoDescription || (o.descriptionFlagSet && o.Description == "") {
+		clear = append(clear, asana.ClearNotes)
+	}
+
+	return clear
 }
 
 // isNonInteractive returns true when prompts should be suppressed: an explicit
@@ -91,6 +121,13 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 			A task ID is required whenever prompts are unavailable -- that is,
 			when stdin is not a terminal or --non-interactive is passed.
 
+			Fields can be emptied as well as set. --unassigned, --no-due and
+			--no-description remove the assignee, the due date and the
+			description; --incomplete reopens a completed task. Passing the
+			corresponding value flag explicitly empty does the same thing, so
+			--assignee "" and --unassigned are equivalent. Omitting a flag
+			entirely still means "leave this alone".
+
 			A new description can be given in one of three mutually exclusive
 			forms: --description for plain text, --markdown-notes for Markdown,
 			or --html-notes for Asana-flavored HTML. Either of the latter two
@@ -113,6 +150,11 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 			$ asana tasks update 1234567890 --complete
 			$ asana tasks update 1234567890 --assignee "Chris Christoff" --followers "Tom McFarlin"
 
+			# Empty a field rather than set it
+			$ asana tasks update 1234567890 --unassigned
+			$ asana tasks update 1234567890 --no-due --no-description
+			$ asana tasks update 1234567890 --incomplete
+
 			# Rehearse: print the request, change nothing
 			$ asana tasks update 1234567890 --dry-run --markdown-notes @notes.md
 
@@ -125,6 +167,9 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 			if len(args) == 1 {
 				opts.TaskID = args[0]
 			}
+			opts.assigneeFlagSet = cmd.Flags().Changed("assignee")
+			opts.dueFlagSet = cmd.Flags().Changed("due")
+			opts.descriptionFlagSet = cmd.Flags().Changed("description")
 			if runF != nil {
 				return runF(opts)
 			}
@@ -140,6 +185,10 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 	cmd.Flags().StringVarP(&opts.Assignee, "assignee", "a", "", "New assignee name or 'me'")
 	cmd.Flags().StringSliceVarP(&opts.Followers, "followers", "f", nil, "Comma-separated follower names or IDs to add")
 	cmd.Flags().BoolVar(&opts.Complete, "complete", false, "Mark task as completed")
+	cmd.Flags().BoolVar(&opts.Incomplete, "incomplete", false, "Reopen the task, marking it not completed")
+	cmd.Flags().BoolVar(&opts.Unassigned, "unassigned", false, `Remove the assignee, leaving the task unassigned (same as --assignee "")`)
+	cmd.Flags().BoolVar(&opts.NoDue, "no-due", false, `Remove the due date (same as --due "")`)
+	cmd.Flags().BoolVar(&opts.NoDescription, "no-description", false, `Empty the description (same as --description "")`)
 	cmd.Flags().BoolVar(&opts.NonInteractive, "non-interactive", false, "Never prompt; error if required flags are missing")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Resolve everything and print the request without updating the task")
 
@@ -149,6 +198,14 @@ func NewCmdUpdate(f factory.Factory, runF func(*UpdateOptions) error) *cobra.Com
 
 	// A task has one description; pick one representation of it.
 	cmd.MarkFlagsMutuallyExclusive("description", "html-notes", "markdown-notes")
+
+	// Setting a value and clearing it are contradictory asks.
+	cmd.MarkFlagsMutuallyExclusive("assignee", "unassigned")
+	cmd.MarkFlagsMutuallyExclusive("due", "no-due")
+	cmd.MarkFlagsMutuallyExclusive("description", "no-description")
+	cmd.MarkFlagsMutuallyExclusive("html-notes", "no-description")
+	cmd.MarkFlagsMutuallyExclusive("markdown-notes", "no-description")
+	cmd.MarkFlagsMutuallyExclusive("complete", "incomplete")
 
 	return cmd
 }
@@ -228,7 +285,13 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 		if len(followerIDs) > 0 {
 			req.Followers = followerIDs // shown for inspection; sent separately for real
 		}
-		return cmdutils.PrintDryRun(opts.IO, fmt.Sprintf("PUT /tasks/%s", opts.TaskID), req)
+		if err := cmdutils.PrintDryRun(opts.IO, fmt.Sprintf("PUT /tasks/%s", opts.TaskID), req); err != nil {
+			return err
+		}
+		// Say what the payload means. "assignee": null only reads as "unassign"
+		// if you already know the convention.
+		opts.IO.Printf("  %s %s\n", cs.Gray("Would change:"), strings.Join(changes, ", "))
+		return nil
 	}
 
 	// Update task fields (everything except followers)
@@ -296,13 +359,34 @@ func applyFieldFlags(opts *UpdateOptions, htmlNotes string, req *asana.UpdateTas
 		changes = append(changes, "due date")
 	}
 
-	if opts.Complete {
+	switch {
+	case opts.Complete:
 		completed := true
 		req.TaskBase.Completed = &completed
 		changes = append(changes, "completed")
+	case opts.Incomplete:
+		// A *bool, so false marshals rather than being dropped by omitempty.
+		completed := false
+		req.TaskBase.Completed = &completed
+		changes = append(changes, "reopened")
+	}
+
+	// Clears are changes too, and must be reported as such or a caller sees
+	// "no updates specified" for a perfectly valid request.
+	for _, field := range opts.wantsClear() {
+		req.Clear = append(req.Clear, field)
+		changes = append(changes, clearedLabels[field])
 	}
 
 	return changes, nil
+}
+
+// clearedLabels names each clear in the command's own vocabulary rather than
+// the API's, so the output reads as what was asked for.
+var clearedLabels = map[asana.ClearableField]string{
+	asana.ClearAssignee: "assignee cleared",
+	asana.ClearDueDate:  "due date cleared",
+	asana.ClearNotes:    "description cleared",
 }
 
 func runInteractiveUpdate(opts *UpdateOptions) error {
