@@ -39,6 +39,9 @@ Ensure you're running the fork with non-interactive support (version should show
 | `The result is too large` | Unbounded project enumeration in a large workspace (fixed in-CLI for `projects tasks`/`projects list` as of the name-resolution fix). If seen on an older build: `asana upgrade --yes` | Resolve projects by name or ID directly (`projects tasks "Name"`, `projects list -q "Name"`) — these use the typeahead API and never enumerate the whole workspace |
 | `section "X" not found in project` | Section name doesn't exist | Run `asana projects sections "Project Name"` to see available sections |
 | `assignee "X" not found` | Name doesn't match any workspace user | Run `asana users list` to see available users; try partial name match |
+| `--assignee is required in non-interactive mode` | No assignee given and no terminal to prompt on | To assign, pass `-a "Name"` or `-a me`. **To create an unassigned task, pass `--unassigned`** (or `-a ""`). Never invent a sentinel like `-a "none"` — partial matching could resolve it to a real person |
+| `--project is required in non-interactive mode` | No project given and no terminal to prompt on | Pass `-p "Name"`, or `--no-project` for a workspace-level task with no project or section |
+| `[assignee unassigned] were all set` (or `[project no-project]`) | Contradictory flags | Naming someone and asking for nobody can't both hold; same for a project and no project |
 | `followers: Cannot write this property` | Using followers in update request body | Followers must be added via `AddFollowers` endpoint (handled in fork) |
 | `task "X" not found` | Wrong task ID | Get the task ID from the Asana URL or from `asana tasks list` |
 
