@@ -25,6 +25,38 @@ import (
 
 const defaultPageSize = 100
 
+// listFields is the opt_fields list for both task listings.
+//
+// /projects/{gid}/tasks and /sections/{gid}/tasks return *compact* records by
+// default — gid, name and resource_type, nothing more. Both listings render an
+// assignee, a due date and a completion status, so without this list every task
+// arrived with a nil assignee (rendered "-"), a nil due date, and a nil
+// Completed, which taskStatus renders as "Incomplete" — for completed tasks
+// too. Anyone reading the listing to decide what was already done was being
+// told something false.
+//
+// This is deliberately leaner than taskjson.Fields(): a listing can span
+// hundreds of tasks, and pulling notes/html_notes/custom_fields for every one
+// of them is a lot of bytes for fields this command never prints. Keep it in
+// step with what displayTasks/displayTasksBySection and toJSONTask actually
+// read.
+var listFields = []string{
+	"name",
+	"assignee",
+	"assignee.name",
+	"completed",
+	"due_on",
+	"tags",
+	"tags.name",
+	"permalink_url",
+}
+
+// listOptions returns request options for a bounded page of tasks with every
+// displayed field requested.
+func listOptions() *asana.Options {
+	return &asana.Options{Limit: defaultPageSize, Fields: listFields}
+}
+
 type TasksOptions struct {
 	IO       *iostreams.IOStreams
 	Prompter prompter.Prompter
@@ -234,7 +266,7 @@ func findProject(projects []*asana.Project, name string) (*asana.Project, error)
 
 func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Project) error {
 	tasks := make([]*asana.Task, 0, 50)
-	options := &asana.Options{Limit: defaultPageSize}
+	options := listOptions()
 
 	for {
 		batch, nextPage, err := project.Tasks(client, options)
@@ -300,7 +332,7 @@ func listTasksWithSections(opts *TasksOptions, client *asana.Client, project *as
 			}
 
 			tasks := make([]*asana.Task, 0, 50)
-			sectionOpts := &asana.Options{Limit: defaultPageSize}
+			sectionOpts := listOptions()
 
 			for {
 				var batch []*asana.Task

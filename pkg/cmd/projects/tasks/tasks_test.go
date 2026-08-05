@@ -3,6 +3,7 @@ package tasks
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -108,6 +109,123 @@ func makeTasks() []*asana.Task {
 	t2.Completed = boolPtr(true)
 
 	return []*asana.Task{t1, t2}
+}
+
+// --- opt_fields regression tests ---
+//
+// /projects/{gid}/tasks and /sections/{gid}/tasks return *compact* task records
+// by default: gid, name, resource_type and nothing else. Both listings render
+// assignee, due date and completion status, so without an explicit opt_fields
+// list every task came back with a nil assignee, a nil due date and a nil
+// Completed — which taskStatus renders as "Incomplete" for completed tasks too.
+// A caller reading this listing to decide what to archive was being told
+// something false, not merely something incomplete.
+
+// requestedFields returns the opt_fields values sent on the last matched request.
+func requestedFields(t *testing.T, captured *string) []string {
+	t.Helper()
+	if captured == nil || *captured == "" {
+		return nil
+	}
+	return strings.Split(*captured, ",")
+}
+
+func hasField(fields []string, want string) bool {
+	return slices.Contains(fields, want)
+}
+
+func TestListAllTasks_RequestsDisplayedFields(t *testing.T) {
+	defer gock.Off()
+
+	var optFields string
+	gock.New("https://app.asana.com").
+		Get("/api/1.0/projects/P1/tasks").
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			optFields = req.URL.Query().Get("opt_fields")
+			return true, nil
+		}).
+		Reply(200).
+		JSON(obj{"data": []obj{
+			{"gid": "111", "name": "Ship it", "completed": true,
+				"assignee": obj{"gid": "U1", "name": "Ada Lovelace"}},
+		}})
+
+	io, _, out, _ := iostreams.Test()
+	opts := &TasksOptions{IO: io}
+	project := &asana.Project{ID: "P1"}
+	project.Name = "Project Alpha"
+
+	if err := listAllTasks(opts, asana.NewClient(http.DefaultClient), project); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	fields := requestedFields(t, &optFields)
+	if len(fields) == 0 {
+		t.Fatalf("no opt_fields requested; compact records omit assignee, due_on and completed")
+	}
+	for _, want := range []string{"assignee", "assignee.name", "completed", "due_on"} {
+		if !hasField(fields, want) {
+			t.Errorf("opt_fields missing %q (got %v)", want, fields)
+		}
+	}
+
+	// End-to-end: the values we asked for have to reach the rendered output.
+	output := out.String()
+	if !strings.Contains(output, "Ada Lovelace") {
+		t.Errorf("output missing assignee name\nGot:\n%s", output)
+	}
+	if !strings.Contains(output, "Completed") {
+		t.Errorf("a completed task rendered as something other than Completed\nGot:\n%s", output)
+	}
+}
+
+func TestListTasksWithSections_RequestsDisplayedFields(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://app.asana.com").
+		Get("/api/1.0/projects/P1/sections").
+		Reply(200).
+		JSON(obj{"data": []obj{{"gid": "S1", "name": "Done"}}})
+
+	var optFields string
+	gock.New("https://app.asana.com").
+		Get("/api/1.0/sections/S1/tasks").
+		AddMatcher(func(req *http.Request, _ *gock.Request) (bool, error) {
+			optFields = req.URL.Query().Get("opt_fields")
+			return true, nil
+		}).
+		Reply(200).
+		JSON(obj{"data": []obj{
+			{"gid": "111", "name": "Ship it", "completed": true,
+				"assignee": obj{"gid": "U1", "name": "Ada Lovelace"}},
+		}})
+
+	io, _, out, _ := iostreams.Test()
+	opts := &TasksOptions{IO: io}
+	project := &asana.Project{ID: "P1"}
+	project.Name = "Project Alpha"
+
+	if err := listTasksWithSections(opts, asana.NewClient(http.DefaultClient), project); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	fields := requestedFields(t, &optFields)
+	if len(fields) == 0 {
+		t.Fatalf("no opt_fields requested on the per-section task fetch")
+	}
+	for _, want := range []string{"assignee", "assignee.name", "completed", "due_on"} {
+		if !hasField(fields, want) {
+			t.Errorf("opt_fields missing %q (got %v)", want, fields)
+		}
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Ada Lovelace") {
+		t.Errorf("output missing assignee name\nGot:\n%s", output)
+	}
+	if !strings.Contains(output, "Completed") {
+		t.Errorf("a completed task rendered as something other than Completed\nGot:\n%s", output)
+	}
 }
 
 // --- JSON output tests for displayTasks (flat list) ---
