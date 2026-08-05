@@ -9,9 +9,9 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/jtsternberg/asana-cli/internal/config"
-	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/projectref"
 	"github.com/spf13/cobra"
 )
 
@@ -76,7 +76,7 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	project, err := shared.ResolveProject(client, &asana.Workspace{ID: ws.ID}, opts.ProjectName)
+	project, err := projectref.ResolveProject(client, &asana.Workspace{ID: ws.ID}, opts.ProjectName)
 	if err != nil {
 		return err
 	}

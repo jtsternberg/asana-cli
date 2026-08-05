@@ -7,9 +7,9 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/jtsternberg/asana-cli/internal/config"
-	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/projectref"
 	"github.com/spf13/cobra"
 )
 
@@ -97,7 +97,7 @@ func runMove(opts *MoveOptions) error {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	project, err := shared.ResolveProject(client, &asana.Workspace{ID: ws.ID}, opts.ProjectName)
+	project, err := projectref.ResolveProject(client, &asana.Workspace{ID: ws.ID}, opts.ProjectName)
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func moveSection(opts *MoveOptions, client *asana.Client, project *asana.Project
 		return fmt.Errorf("a destination is required: pass one of --first, --last, --before <section> or --after <section>")
 	}
 
-	sections, err := shared.FetchAllSections(client, project)
+	sections, err := projectref.FetchAllSections(client, project)
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func moveSection(opts *MoveOptions, client *asana.Client, project *asana.Project
 		return fmt.Errorf("project %q has no sections", project.Name)
 	}
 
-	section, err := shared.FindSection(sections, project.Name, opts.SectionName)
+	section, err := projectref.FindSection(sections, project.Name, opts.SectionName)
 	if err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func resolveDestination(
 		return &destination{after: last.ID, label: "to the bottom of the project"}, nil
 
 	case opts.Before != "":
-		anchor, err := shared.FindSection(sections, project.Name, opts.Before)
+		anchor, err := projectref.FindSection(sections, project.Name, opts.Before)
 		if err != nil {
 			return nil, fmt.Errorf("--before: %w", err)
 		}
@@ -189,7 +189,7 @@ func resolveDestination(
 		return &destination{before: anchor.ID, label: fmt.Sprintf("before %q", anchor.Name)}, nil
 
 	default:
-		anchor, err := shared.FindSection(sections, project.Name, opts.After)
+		anchor, err := projectref.FindSection(sections, project.Name, opts.After)
 		if err != nil {
 			return nil, fmt.Errorf("--after: %w", err)
 		}

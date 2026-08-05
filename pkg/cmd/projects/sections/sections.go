@@ -11,9 +11,9 @@ import (
 	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/sections/create"
 	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/sections/delete"
 	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/sections/move"
-	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/projectref"
 	"github.com/spf13/cobra"
 )
 
@@ -76,12 +76,12 @@ func runSections(opts *SectionsOptions) error {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	project, err := shared.ResolveProject(client, &asana.Workspace{ID: defaultWS.ID}, opts.ProjectName)
+	project, err := projectref.ResolveProject(client, &asana.Workspace{ID: defaultWS.ID}, opts.ProjectName)
 	if err != nil {
 		return err
 	}
 
-	sections, err := shared.FetchAllSections(client, project)
+	sections, err := projectref.FetchAllSections(client, project)
 	if err != nil {
 		return err
 	}

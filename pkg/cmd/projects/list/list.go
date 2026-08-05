@@ -89,7 +89,11 @@ func runList(opts *ListOptions) error {
 	}
 
 	if opts.Search != "" {
-		projects, err = workspace.SearchProjects(client, opts.Search, opts.Limit)
+		// The typeahead endpoint returns compact records, so without these the
+		// owner/team column silently vanished for -q results while the plain
+		// listing showed it — same data, two different-looking answers.
+		projects, err = workspace.SearchProjects(client, opts.Search, opts.Limit,
+			&asana.Options{Fields: shared.ProjectFields()})
 	} else if opts.Favorite {
 		projects, err = fetchFavoriteProjects(client, workspace, opts.Limit)
 	} else {

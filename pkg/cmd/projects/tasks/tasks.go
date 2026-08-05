@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/projectref"
 	"github.com/spf13/cobra"
 )
 
@@ -168,7 +168,7 @@ func selectProject(
 	// and, in large workspaces, the unbounded first page can 400 with
 	// "The result is too large".
 	if opts.ProjectName != "" {
-		return resolveProject(client, ws, opts.ProjectName)
+		return projectref.ResolveProject(client, ws, opts.ProjectName)
 	}
 
 	// Otherwise, enumerate for interactive selection.
@@ -194,74 +194,6 @@ func selectProject(
 	}
 
 	return projects[index], nil
-}
-
-// resolveProject resolves a project by ID or name without enumerating the
-// whole workspace. Numeric input is treated as a gid and fetched directly;
-// everything else is resolved through the workspace typeahead API (the same
-// endpoint `projects list -q` uses), which has no project-count ceiling.
-func resolveProject(
-	client *asana.Client,
-	ws *asana.Workspace,
-	nameOrID string,
-) (*asana.Project, error) {
-	if isProjectID(nameOrID) {
-		project := &asana.Project{}
-		project.ID = nameOrID
-		if err := project.Fetch(client); err != nil {
-			return nil, fmt.Errorf("project %q not found: %w", nameOrID, err)
-		}
-		return project, nil
-	}
-
-	projects, err := ws.SearchProjects(client, nameOrID, 100)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search projects: %w", err)
-	}
-	if len(projects) == 0 {
-		return nil, fmt.Errorf("project %q not found in workspace", nameOrID)
-	}
-
-	return findProject(projects, nameOrID)
-}
-
-// isProjectID reports whether s looks like an Asana gid (all digits).
-//
-// This is intentionally greedy: an all-digit input is always treated as a gid
-// and fetched directly, never resolved by name. A project literally named
-// after a bare integer (e.g. "2024") is therefore unreachable by that name —
-// an accepted trade-off, since such names are vanishingly rare and inherently
-// ambiguous with gids anyway.
-func isProjectID(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func findProject(projects []*asana.Project, name string) (*asana.Project, error) {
-	nameLower := strings.ToLower(name)
-
-	// Exact match on name or ID
-	for _, p := range projects {
-		if strings.ToLower(p.Name) == nameLower || p.ID == name {
-			return p, nil
-		}
-	}
-
-	// Fuzzy match (contains)
-	for _, p := range projects {
-		if strings.Contains(strings.ToLower(p.Name), nameLower) {
-			return p, nil
-		}
-	}
-
-	return nil, fmt.Errorf("project %q not found in workspace", name)
 }
 
 func listAllTasks(opts *TasksOptions, client *asana.Client, project *asana.Project) error {

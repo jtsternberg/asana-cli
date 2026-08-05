@@ -8,9 +8,11 @@ import (
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/jtsternberg/asana-cli/internal/config"
 	"github.com/jtsternberg/asana-cli/internal/prompter"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/format"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/projectref"
 	"github.com/spf13/cobra"
 )
 
@@ -114,7 +116,7 @@ func runMove(opts *MoveOptions) error {
 	}
 
 	// --- Target section (optional) ---
-	targetSection, err := getSection(opts, ni, targetProject.ID, client)
+	targetSection, err := getSection(opts, ni, targetProject, client)
 	if err != nil {
 		return err
 	}
@@ -199,28 +201,26 @@ func getOrSelectTask(opts *MoveOptions, workspaceID string, client *asana.Client
 
 func getProject(opts *MoveOptions, ni bool, workspaceID string, client *asana.Client) (*asana.Project, error) {
 	ws := &asana.Workspace{ID: workspaceID}
-	projects, err := ws.AllProjects(client)
-	if err != nil {
-		return nil, fmt.Errorf("cannot fetch projects: %w", err)
-	}
 
+	// A named project resolves through typeahead — no workspace enumeration, and
+	// an ambiguous name is an error rather than whichever project sorted first.
+	// Moving a task into the wrong project is invisible to whoever asked for it.
 	if opts.Project != "" {
-		projectLower := strings.ToLower(opts.Project)
-		for _, p := range projects {
-			if strings.ToLower(p.Name) == projectLower || p.ID == opts.Project {
-				return p, nil
-			}
+		project, err := projectref.ResolveProject(client, ws, opts.Project)
+		if err != nil {
+			return nil, fmt.Errorf("--project: %w", err)
 		}
-		for _, p := range projects {
-			if strings.Contains(strings.ToLower(p.Name), projectLower) {
-				return p, nil
-			}
-		}
-		return nil, fmt.Errorf("project %q not found in workspace", opts.Project)
+		return project, nil
 	}
 
 	if ni {
 		return nil, fmt.Errorf("--project is required in non-interactive mode")
+	}
+
+	// Interactive selection is the only path that needs every project.
+	projects, err := shared.FetchAllProjects(client, ws, 0)
+	if err != nil {
+		return nil, fmt.Errorf("cannot fetch projects: %w", err)
 	}
 
 	names := format.MapToStrings(projects, func(p *asana.Project) string {
@@ -234,11 +234,12 @@ func getProject(opts *MoveOptions, ni bool, workspaceID string, client *asana.Cl
 	return projects[selected], nil
 }
 
-func getSection(opts *MoveOptions, ni bool, projectID string, client *asana.Client) (*asana.Section, error) {
-	project := &asana.Project{ID: projectID}
-	sections, _, err := project.Sections(client)
+// getSection takes the resolved project rather than its gid so an ambiguity error
+// can name the project the section was looked for in.
+func getSection(opts *MoveOptions, ni bool, project *asana.Project, client *asana.Client) (*asana.Section, error) {
+	sections, err := projectref.FetchAllSections(client, project)
 	if err != nil {
-		return nil, fmt.Errorf("cannot fetch sections: %w", err)
+		return nil, err
 	}
 
 	if len(sections) == 0 {
@@ -246,18 +247,11 @@ func getSection(opts *MoveOptions, ni bool, projectID string, client *asana.Clie
 	}
 
 	if opts.Section != "" {
-		sectionLower := strings.ToLower(opts.Section)
-		for _, s := range sections {
-			if strings.ToLower(s.Name) == sectionLower || s.ID == opts.Section {
-				return s, nil
-			}
+		section, err := projectref.FindSection(sections, project.Name, opts.Section)
+		if err != nil {
+			return nil, fmt.Errorf("--section: %w", err)
 		}
-		for _, s := range sections {
-			if strings.Contains(strings.ToLower(s.Name), sectionLower) {
-				return s, nil
-			}
-		}
-		return nil, fmt.Errorf("section %q not found in project", opts.Section)
+		return section, nil
 	}
 
 	// In non-interactive mode with no section specified, skip (task goes to default location)

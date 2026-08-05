@@ -63,7 +63,12 @@ func listRun(opts *ListOptions) error {
 		return err
 	}
 
-	teams, err := ws.AllTeams(client)
+	// /organizations/{gid}/teams returns compact records — gid, name,
+	// resource_type — so without this list every description printed empty and
+	// the JSON output's organization was always null.
+	teams, err := ws.AllTeams(client, &asana.Options{
+		Fields: []string{"name", "description", "organization", "organization.name"},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to fetch teams: %w", err)
 	}

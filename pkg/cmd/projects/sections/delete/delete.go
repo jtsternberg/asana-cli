@@ -8,9 +8,9 @@ import (
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/jtsternberg/asana-cli/internal/config"
 	"github.com/jtsternberg/asana-cli/internal/prompter"
-	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/projectref"
 	"github.com/spf13/cobra"
 )
 
@@ -93,7 +93,7 @@ func runDelete(opts *DeleteOptions) error {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	project, err := shared.ResolveProject(client, &asana.Workspace{ID: ws.ID}, opts.ProjectName)
+	project, err := projectref.ResolveProject(client, &asana.Workspace{ID: ws.ID}, opts.ProjectName)
 	if err != nil {
 		return err
 	}
@@ -102,7 +102,7 @@ func runDelete(opts *DeleteOptions) error {
 }
 
 func deleteSection(opts *DeleteOptions, client *asana.Client, project *asana.Project) error {
-	section, err := shared.ResolveSection(client, project, opts.SectionName)
+	section, err := projectref.ResolveSection(client, project, opts.SectionName)
 	if err != nil {
 		return err
 	}

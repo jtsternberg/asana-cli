@@ -95,9 +95,23 @@ func runTasks(opts *TasksOptions) error {
 		return fmt.Errorf("failed to fetch tag: %w", err)
 	}
 
-	tasks, _, err := tag.Tasks(client)
-	if err != nil {
-		return fmt.Errorf("failed to fetch tasks for tag %s: %w", tag.Name, err)
+	// Page explicitly: a single unbounded call reads whatever Asana chooses to
+	// return and silently drops the rest.
+	tasks := make([]*asana.Task, 0, 50)
+	options := &asana.Options{Limit: 100, Fields: []string{"name"}}
+	for {
+		batch, nextPage, err := tag.Tasks(client, options)
+		if err != nil {
+			return fmt.Errorf("failed to fetch tasks for tag %s: %w", tag.Name, err)
+		}
+
+		tasks = append(tasks, batch...)
+
+		if nextPage == nil || nextPage.Offset == "" {
+			break
+		}
+
+		options.Offset = nextPage.Offset
 	}
 
 	if len(tasks) == 0 {

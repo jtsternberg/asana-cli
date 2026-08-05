@@ -66,7 +66,11 @@ func runList(opts *ListOptions) error {
 		return err
 	}
 
-	workspaces, err := client.AllWorkspaces()
+	// is_organization is not in the compact record, so without it every workspace
+	// printed as "Workspace" — including organizations.
+	workspaces, err := client.AllWorkspaces(&asana.Options{
+		Fields: []string{"name", "is_organization"},
+	})
 	if err != nil {
 		return err
 	}

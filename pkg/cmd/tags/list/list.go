@@ -174,6 +174,9 @@ func fetchFavoriteTags(client *asana.Client, workspace *asana.Workspace) ([]*asa
 	return tags, nil
 }
 
+// maxPageSize is the Asana API's per-page maximum.
+const maxPageSize = 100
+
 func fetchTags(client *asana.Client, workspace *asana.Workspace, limit int) ([]*asana.Tag, error) {
 	initialCapacity := 100
 	if limit > 0 {
@@ -185,12 +188,24 @@ func fetchTags(client *asana.Client, workspace *asana.Workspace, limit int) ([]*
 	}
 
 	tags := make([]*asana.Tag, 0, initialCapacity)
+	// Always request a bounded page, the way FetchAllProjects does: an unbounded
+	// request is what earns "400: The result is too large" in a big workspace.
+	// `limit` only caps the accumulated results below.
+	pageSize := maxPageSize
+	if limit > 0 && limit < maxPageSize {
+		pageSize = limit
+	}
+	// /workspaces/{gid}/tags returns compact records, so `color` has to be asked
+	// for explicitly — without it the color column printed "-" for every tag.
 	options := &asana.Options{
-		Limit: limit,
+		Limit:  pageSize,
+		Fields: []string{"name", "color"},
 	}
 
 	for {
-		batch, nextPage, err := workspace.Tags(client)
+		// options must actually be passed: the loop below advances
+		// options.Offset, and a call that ignores it re-reads page one.
+		batch, nextPage, err := workspace.Tags(client, options)
 		if err != nil {
 			return nil, err
 		}

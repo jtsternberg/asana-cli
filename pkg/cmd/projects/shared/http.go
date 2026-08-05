@@ -4,6 +4,35 @@ import "github.com/jtsternberg/asana-cli/internal/api/asana"
 
 const maxPageSize = 100
 
+// projectFields is the opt_fields list behind every project listing. Both the
+// enumerate-everything path and the typeahead path (`projects list -q`) use it,
+// so the two render the same columns instead of the query path silently dropping
+// the owner/team column.
+var projectFields = []string{
+	"name",
+	"archived",
+	"color",
+	"default_view",
+	"due_on",
+	"start_on",
+	"notes",
+	"owner",
+	"owner.name",
+	"team",
+	"team.name",
+	"public",
+	"created_at",
+	"modified_at",
+}
+
+// ProjectFields returns the canonical project opt_fields list. The returned
+// slice is a copy.
+func ProjectFields() []string {
+	out := make([]string, len(projectFields))
+	copy(out, projectFields)
+	return out
+}
+
 func FetchAllProjects(
 	client *asana.Client,
 	workspace *asana.Workspace,
@@ -25,23 +54,8 @@ func FetchAllProjects(
 
 	projects := make([]*asana.Project, 0, initialCapacity)
 	options := &asana.Options{
-		Limit: pageSize,
-		Fields: []string{
-			"name",
-			"archived",
-			"color",
-			"default_view",
-			"due_on",
-			"start_on",
-			"notes",
-			"owner",
-			"owner.name",
-			"team",
-			"team.name",
-			"public",
-			"created_at",
-			"modified_at",
-		},
+		Limit:  pageSize,
+		Fields: ProjectFields(),
 	}
 
 	for {

@@ -9,12 +9,14 @@ import (
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/jtsternberg/asana-cli/internal/config"
 	"github.com/jtsternberg/asana-cli/internal/prompter"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/cmdutils"
 	"github.com/jtsternberg/asana-cli/pkg/convert"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/format"
 	"github.com/jtsternberg/asana-cli/pkg/htmlnotes"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/projectref"
 	"github.com/jtsternberg/asana-cli/pkg/taskjson"
 	"github.com/jtsternberg/asana-cli/pkg/userref"
 	"github.com/spf13/cobra"
@@ -267,7 +269,7 @@ func runCreate(opts *CreateOptions) error {
 		}
 
 		// Section defaults to the first one when unspecified in non-interactive mode.
-		section, err = getSection(opts, ni, project.ID, client)
+		section, err = getSection(opts, ni, project, client)
 		if err != nil {
 			return err
 		}
@@ -531,26 +533,22 @@ func getProject(opts *CreateOptions, ni bool, workspaceID string, client *asana.
 	}
 
 	ws := &asana.Workspace{ID: workspaceID}
-	projects, err := ws.AllProjects(client)
-	if err != nil {
-		return nil, fmt.Errorf("cannot fetch projects: %w", err)
+
+	// A named project resolves through typeahead, so this never enumerates the
+	// workspace — 1203 projects here, and the unbounded first page can 400 with
+	// "The result is too large". Ambiguity is an error, not a guess.
+	if opts.Project != "" {
+		project, err := projectref.ResolveProject(client, ws, opts.Project)
+		if err != nil {
+			return nil, fmt.Errorf("--project: %w", err)
+		}
+		return project, nil
 	}
 
-	if opts.Project != "" {
-		projectLower := strings.ToLower(opts.Project)
-		// Exact match first
-		for _, p := range projects {
-			if strings.ToLower(p.Name) == projectLower || p.ID == opts.Project {
-				return p, nil
-			}
-		}
-		// Partial/contains match
-		for _, p := range projects {
-			if strings.Contains(strings.ToLower(p.Name), projectLower) {
-				return p, nil
-			}
-		}
-		return nil, fmt.Errorf("project %q not found in workspace", opts.Project)
+	// Interactive selection is the only path that needs every project.
+	projects, err := shared.FetchAllProjects(client, ws, 0)
+	if err != nil {
+		return nil, fmt.Errorf("cannot fetch projects: %w", err)
 	}
 
 	names := format.MapToStrings(projects, func(p *asana.Project) string {
@@ -564,28 +562,20 @@ func getProject(opts *CreateOptions, ni bool, workspaceID string, client *asana.
 	return projects[selected], nil
 }
 
-func getSection(opts *CreateOptions, ni bool, projectID string, client *asana.Client) (*asana.Section, error) {
-	project := &asana.Project{ID: projectID}
-	sections, _, err := project.Sections(client)
+// getSection takes the resolved project rather than its gid so an ambiguity
+// error can name the project the section was looked for in.
+func getSection(opts *CreateOptions, ni bool, project *asana.Project, client *asana.Client) (*asana.Section, error) {
+	sections, err := projectref.FetchAllSections(client, project)
 	if err != nil {
-		return nil, fmt.Errorf("cannot fetch sections: %w", err)
+		return nil, err
 	}
 
 	if opts.Section != "" {
-		sectionLower := strings.ToLower(opts.Section)
-		// Exact match
-		for _, s := range sections {
-			if strings.ToLower(s.Name) == sectionLower || s.ID == opts.Section {
-				return s, nil
-			}
+		section, err := projectref.FindSection(sections, project.Name, opts.Section)
+		if err != nil {
+			return nil, fmt.Errorf("--section: %w", err)
 		}
-		// Partial/contains match
-		for _, s := range sections {
-			if strings.Contains(strings.ToLower(s.Name), sectionLower) {
-				return s, nil
-			}
-		}
-		return nil, fmt.Errorf("section %q not found in project", opts.Section)
+		return section, nil
 	}
 
 	// In non-interactive mode, default to the first section
@@ -607,8 +597,6 @@ func getSection(opts *CreateOptions, ni bool, projectID string, client *asana.Cl
 	return sections[selected], nil
 }
 
-// resolveFollowers resolves follower names/IDs/"me" to user IDs.
-// Returns (followerIDs, followerNames, error).
 func resolveFollowers(opts *CreateOptions, resolver *userref.Resolver) ([]string, []string, error) {
 	if len(opts.Followers) == 0 {
 		return nil, nil, nil

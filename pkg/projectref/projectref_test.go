@@ -1,6 +1,8 @@
-package shared
+package projectref
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -8,6 +10,8 @@ import (
 	"github.com/h2non/gock"
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 )
+
+type obj map[string]any
 
 func mockSections(sections ...obj) {
 	gock.New("https://app.asana.com").
@@ -195,5 +199,125 @@ func TestFetchAllSections_Paginates(t *testing.T) {
 	}
 	if !gock.IsDone() {
 		t.Errorf("pending mocks: %d", len(gock.Pending()))
+	}
+}
+
+// --- project ambiguity ---
+
+func project(id, name string) *asana.Project {
+	p := &asana.Project{ID: id}
+	p.Name = name
+	return p
+}
+
+// The live shape: 1203 projects, and "rocks" appears in 211 of their names.
+// First-match-wins wrote tasks into whichever one sorted first.
+func TestFindProject_AmbiguousPartialIsAnError(t *testing.T) {
+	projects := []*asana.Project{
+		project("P1", "Q3 2026 Rocks - Marketing"),
+		project("P2", "Q3 2026 Rocks - Support"),
+		project("P3", "Lindris"),
+	}
+
+	_, err := FindProject(projects, "Rocks")
+	if err == nil {
+		t.Fatal("expected an ambiguity error; a silent pick writes to the wrong project")
+	}
+
+	var ambiguous AmbiguousError
+	if !errors.As(err, &ambiguous) {
+		t.Fatalf("want an AmbiguousError so callers can annotate it, got %T", err)
+	}
+	if ambiguous.Kind != "project" {
+		t.Errorf("Kind = %q; want project", ambiguous.Kind)
+	}
+	for _, want := range []string{"Q3 2026 Rocks - Marketing", "P1", "Q3 2026 Rocks - Support", "P2"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("ambiguity error missing %q\nGot: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "Lindris") {
+		t.Errorf("ambiguity error listed a non-matching project\nGot: %v", err)
+	}
+}
+
+// An exact match still wins, or "Lindris" would be unreachable while
+// "Lindris Previous Rocks" exists — both real projects in this workspace.
+func TestFindProject_ExactNameBeatsPartial(t *testing.T) {
+	projects := []*asana.Project{
+		project("P1", "Lindris Previous Rocks"),
+		project("P2", "Lindris"),
+		project("P3", "Lindris Archive"),
+	}
+
+	got, err := FindProject(projects, "lindris")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ID != "P2" {
+		t.Errorf("resolved %q (%q); want P2 (the exact match)", got.ID, got.Name)
+	}
+}
+
+func TestFindProject_UniquePartial(t *testing.T) {
+	projects := []*asana.Project{project("P1", "Lindris Previous Rocks"), project("P2", "Something Else")}
+
+	got, err := FindProject(projects, "previous")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ID != "P1" {
+		t.Errorf("resolved %q; want P1", got.ID)
+	}
+}
+
+func TestFindProject_ByGID(t *testing.T) {
+	projects := []*asana.Project{project("1001", "Alpha"), project("1002", "Beta")}
+
+	got, err := FindProject(projects, "1002")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.ID != "1002" {
+		t.Errorf("resolved %q; want 1002", got.ID)
+	}
+}
+
+func TestFindProject_NotFound(t *testing.T) {
+	_, err := FindProject([]*asana.Project{project("P1", "Alpha")}, "Nope")
+	if err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected not-found, got: %v", err)
+	}
+}
+
+// A query matching hundreds of projects must not print hundreds of lines — an
+// error nobody reads is barely better than a silent wrong guess.
+func TestAmbiguousError_ElidesLongCandidateLists(t *testing.T) {
+	projects := make([]*asana.Project, 0, 211)
+	for i := range 211 {
+		projects = append(projects, project(fmt.Sprintf("P%d", i), fmt.Sprintf("Q3 Rocks %d", i)))
+	}
+
+	_, err := FindProject(projects, "rocks")
+	if err == nil {
+		t.Fatal("expected an ambiguity error")
+	}
+
+	lines := strings.Count(err.Error(), "\n")
+	if lines > maxListedCandidates+3 {
+		t.Errorf("error spans %d lines; want it capped near %d", lines, maxListedCandidates)
+	}
+	if !strings.Contains(err.Error(), "211 projects match") {
+		t.Errorf("error should report the true match count\nGot: %v", err)
+	}
+	if !strings.Contains(err.Error(), "and 201 more") {
+		t.Errorf("error should say how many candidates it elided\nGot: %v", err)
+	}
+}
+
+func TestFindProject_EmptyRef(t *testing.T) {
+	_, err := FindProject([]*asana.Project{project("P1", "Alpha")}, "  ")
+	if err == nil || !strings.Contains(err.Error(), "cannot be empty") {
+		t.Errorf("expected an empty-name error, got: %v", err)
 	}
 }

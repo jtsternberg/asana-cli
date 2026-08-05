@@ -353,11 +353,31 @@ Deleting a section does **not** delete its tasks — they move to the project's
 default section. The CLI still refuses a non-empty section unless you pass
 `--force`, because losing a heading silently reshuffles work.
 
-**Section names resolve strictly.** For both `move` and `delete`, an ambiguous
-name is an error listing every candidate and its ID, not a first-match guess.
-`"Q3 2026 Rocks"` against a project holding `Q3 2026 Rocks - Ben`,
-`Q3 2026 Rocks - Alyssa`, ... fails and tells you so. Pass the full name or the
-numeric section ID.
+**Project and section names resolve strictly, everywhere.** Anywhere a project or
+section goes — `--project`/`-p` and `--section`/`-s` on `tasks create` and
+`tasks move`, the arguments to `projects tasks`, and all four `projects sections`
+subcommands — a name matching more than one object is an **error** listing the
+candidates, not a first-match guess.
+
+This matters more than it sounds. The workspace has **1203 projects**: `-p Rocks`
+matches 211 of them, `-p marketing` 19, `-p support` 28. It used to pick one
+silently.
+
+```
+$ asana tasks create -n "Ship it" -p Rocks -a "Ben Rojas" --non-interactive
+Error: --project: project "Rocks" is ambiguous — 100 projects match:
+  Q1 2026 Rocks - SB (ID: 1212478655912226)
+  2023 Q4 Rocks (ID: 1205784903414470)
+  ...
+  …and 90 more
+Re-run with the full project name or its ID (`asana projects list -q "Rocks"` lists the matches).
+```
+
+An exact name always wins over any number of partial matches, so `-p Lindris`
+still resolves even though `Lindris Previous Rocks` and `Lindris Archive` exist.
+**Do not respond to an ambiguity error by picking a candidate** — narrow it with
+`asana projects list -q <text>` (or `asana projects sections <project>` for
+sections) and ask if it is still unclear.
 
 ### List tasks in a project
 
@@ -392,7 +412,18 @@ asana tasks search --project <project-id> --json \
   | jq '.[] | select(.assignee.id == "<tom-gid>")'
 ```
 
-**Caveat — `--sections` uses a board-view endpoint.** Section-scoped task listing relies on Asana's `sections/{id}/tasks` endpoint, which is populated for **board-layout** projects. On a list-layout project a section may return no tasks even when the Asana web UI shows some. If `--sections` yields empty sections that you know are non-empty, say so explicitly rather than silently falling back to an assignee filter — see "Answering read queries honestly" below.
+**`--sections` works on list-layout projects too.** This used to carry a warning
+that `sections/{id}/tasks` is only populated for board-layout projects. Measured
+against six real projects — three `list`, three `board`, from 15 to 1263 tasks —
+the per-section task counts summed to exactly the flat `projects tasks` count
+every time. Asana's docs make the same board-only claim about *moving* sections,
+and that is wrong too: `projects sections move` was verified working on a
+list-layout project.
+
+Six projects is not a proof for every project, so the honesty rule still stands:
+if `--sections` yields empty sections you have reason to believe are non-empty,
+**say so explicitly** rather than silently falling back to an assignee filter —
+see "Answering read queries honestly" below.
 
 ## Users
 
