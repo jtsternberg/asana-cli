@@ -105,7 +105,13 @@ If you're asked for one of these, **say that the CLI can't do it** rather than q
 ## Guard rails
 
 - If task not found, ask the user to verify the ID
-- If user/assignee not found, run `asana users list` and suggest the closest match
+- If a user is not found, run `asana users list -q "<name>"`. If that comes back
+  empty, say the person is not in the workspace — do not substitute the nearest
+  spelling.
+- If a name comes back **ambiguous**, the CLI has refused to guess between several
+  people. Do not resolve it for the user by picking one: relay the candidates and
+  ask. `--assignee`, `--followers` and `--remove-followers` all behave this way,
+  and `me` always means the authenticated user.
 - `Error: <p> is not allowed in Asana html notes...` is caught locally, before any request — nothing was changed. Fix the markup or switch to `--markdown-notes`.
 - `Error: no updates specified` means none of the change flags were set. Clearing flags count as changes, so this no longer appears for `--unassigned`, `--no-due`, `--no-description` or `--incomplete` — if you see it with one of those, the binary predates them (`asana --version` should show `v3.3.2-18-…` or later)
 - After updating, read the output carefully — don't claim success unless the output confirms it. Rich-text descriptions print a `Description: rich text (markdown, N chars)` line.

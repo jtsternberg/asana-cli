@@ -24,3 +24,14 @@ asana tasks move <task-id> \
 
 - If task not found, ask the user to verify the ID
 - If project/section not found, use list commands to suggest alternatives
+- If `-p` or `-s` comes back **ambiguous**, the CLI has refused to move the task
+  rather than guess. Do not pick a candidate — narrow it
+  (`asana projects list -q`, `asana projects sections "Project"`) and ask. Moving
+  a task into the wrong project is invisible to whoever asked for it.
+
+## Emptying a section afterwards
+
+Moving the last task out of a section leaves the heading behind. `asana projects
+sections delete "Project" "Section"` removes it, and `asana projects sections move`
+reorders one — neither existed before v3.6.0, so a plan built on an older
+recollection may assume the web UI is the only way.

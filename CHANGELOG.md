@@ -1,5 +1,42 @@
 # Changelog
 
+## [3.6.1] - 2026-08-05
+
+Documentation only — no CLI changes. v3.6.0 updated the bundled agent skill's
+`SKILL.md` but not the five reference files, the agent definition, or the eval
+suite it ships alongside, so the plugin was still teaching the behaviour the
+release had just removed.
+
+### Fixed
+
+- **Two instructions told an agent to do exactly what v3.6.0 made an error.**
+  `TROUBLESHOOTING.md` answered a failed assignee lookup with "try partial name
+  match", and `UPDATE_TASK.md` said to "suggest the closest match" — which is not
+  just stale but the wrong instinct, since picking a candidate on the user's
+  behalf is the mis-assignment the strict resolver exists to prevent. Both now say
+  to narrow the search and ask.
+
+- **`CREATE_TASK.md` still described resolution as "exact, then partial,
+  case-insensitive"** and pointed at a bare `asana users list` for an ambiguous
+  assignee. It now describes the unique-partial rule and points at
+  `asana users list -q`.
+
+- **`TROUBLESHOOTING.md` had no entry for any of the new errors.** Added rows for
+  the three ambiguity refusals, the non-empty-section refusal, the missing-TTY
+  confirmation, and `sections move` with no destination — each saying that a
+  refusal is the CLI protecting the caller, not a malfunction to route around.
+
+- **`MOVE_TASK.md` did not know sections can be deleted or reordered**, so a plan
+  built from it would still send someone to the web UI to tidy up after a move.
+
+- **`agents/asana-task-manager.md` listed neither the new subcommands nor the
+  never-guess rule**, including the specific failure of reaching for the MCP
+  connector to bypass an ambiguity check.
+
+- **The eval suite asserted nothing about either change.** Added two cases: an
+  ambiguous assignee that must be relayed as a question rather than resolved, and
+  deleting an emptied section via the CLI rather than raw REST.
+
 ## [3.6.0] - 2026-08-05
 
 ### Added

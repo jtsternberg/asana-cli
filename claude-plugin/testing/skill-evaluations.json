@@ -1,7 +1,9 @@
 [
   {
     "id": "eval-01",
-    "skills": ["using-asana-cli"],
+    "skills": [
+      "using-asana-cli"
+    ],
     "query": "Create a task called 'Fix login bug' assigned to Chris Christoff in the Outgoing Tasks project",
     "expected_behavior": [
       "Runs asana tasks create with -n, -a, and -p flags",
@@ -11,7 +13,9 @@
   },
   {
     "id": "eval-02",
-    "skills": ["using-asana-cli"],
+    "skills": [
+      "using-asana-cli"
+    ],
     "query": "Add Tom McFarlin as a follower to task 1234567890 and set the due date to next Friday",
     "expected_behavior": [
       "Runs asana tasks update with task ID, -f and -d flags",
@@ -21,7 +25,9 @@
   },
   {
     "id": "eval-03",
-    "skills": ["using-asana-cli"],
+    "skills": [
+      "using-asana-cli"
+    ],
     "query": "What sections are in the Lindris project?",
     "expected_behavior": [
       "Runs asana projects sections Lindris",
@@ -30,7 +36,9 @@
   },
   {
     "id": "eval-04",
-    "skills": ["troubleshooting-asana"],
+    "skills": [
+      "troubleshooting-asana"
+    ],
     "query": "asana tasks create is failing with 'unknown flag: --name'",
     "expected_behavior": [
       "Identifies the user is running upstream v1.2.0",
@@ -40,12 +48,42 @@
   },
   {
     "id": "eval-05",
-    "skills": ["using-asana-cli"],
+    "skills": [
+      "using-asana-cli"
+    ],
     "query": "Delete task 9876543210",
     "expected_behavior": [
       "Confirms with the user before deleting",
       "Runs asana tasks delete 9876543210",
       "Reports success"
+    ]
+  },
+  {
+    "id": "eval-06",
+    "skills": [
+      "using-asana-cli"
+    ],
+    "query": "Create a task called 'Fix the login bug' in the Lindris project assigned to David",
+    "expected_behavior": [
+      "Attempts the create with -a \"David\" (or looks the name up first with asana users list -q David)",
+      "Recognises that the name matches several people \u2014 the CLI errors with 'user \"David\" is ambiguous' and lists the candidates",
+      "Does NOT pick a candidate, and does NOT retry with an arbitrary full name",
+      "Does NOT fall back to the MCP connector to bypass the ambiguity check",
+      "Relays the candidate names/emails to the user and asks which David was meant",
+      "Reports that no task was created"
+    ]
+  },
+  {
+    "id": "eval-07",
+    "skills": [
+      "using-asana-cli"
+    ],
+    "query": "I moved all the tasks out of the 'Q3 2026 Rocks - Ben' section in Lindris. Remove the empty section heading.",
+    "expected_behavior": [
+      "Uses asana projects sections delete Lindris \"Q3 2026 Rocks - Ben\" (with --yes when non-interactive)",
+      "Passes the full section name or its ID rather than a prefix like \"Q3 2026 Rocks\", which is ambiguous across seven sections",
+      "Does NOT reach for the raw REST API or the MCP connector \u2014 the CLI has a delete subcommand as of v3.6.0",
+      "If the section still holds tasks, relays the refusal and the task count instead of passing --force unasked"
     ]
   }
 ]

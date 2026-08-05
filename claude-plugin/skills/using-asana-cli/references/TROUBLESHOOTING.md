@@ -21,7 +21,7 @@ which asana
 asana --version
 ```
 
-Ensure you're running the fork with non-interactive support (version should show `dev` or include `--project` flag in `asana tasks create --help`).
+Ensure you're running this fork, at v3.6.0 or later — earlier builds resolved ambiguous names by silently picking the first match. `asana projects sections --help` should list `delete` and `move` subcommands.
 
 > **Do not run `asana upgrade` if the version has a `-g<sha>` suffix** (e.g. `v3.3.2-10-g117d35c`) or reads `dev`. That means a locally built binary, usually newer than any release. `asana upgrade` downloads the latest *release* and overwrites it, so you would silently move **backwards** and lose whatever you were testing. Verify a suspected-stale binary with `asana tasks create --help` instead — if the flag you need is listed, the binary is fine.
 
@@ -38,8 +38,14 @@ Ensure you're running the fork with non-interactive support (version should show
 | Description shows literal `**bold**` or `[text](url)` in Asana | Markdown was passed to `-m`, which is the plain-text field | Re-run with `--markdown-notes` instead |
 | `The result is too large` | Unbounded project enumeration in a large workspace (fixed in-CLI for `projects tasks`/`projects list` as of the name-resolution fix). If seen on an older build: `asana upgrade --yes` | Resolve projects by name or ID directly (`projects tasks "Name"`, `projects list -q "Name"`) — these use the typeahead API and never enumerate the whole workspace |
 | `section "X" not found in project` | Section name doesn't exist | Run `asana projects sections "Project Name"` to see available sections |
-| `assignee "X" not found` | Name doesn't match any workspace user | Run `asana users list` to see available users; try partial name match |
-| `--assignee is required in non-interactive mode` | No assignee given and no terminal to prompt on | To assign, pass `-a "Name"` or `-a me`. **To create an unassigned task, pass `--unassigned`** (or `-a ""`). Never invent a sentinel like `-a "none"` — partial matching could resolve it to a real person |
+| `user "X" not found in workspace` | Name matches nobody | `asana users list -q "X"`. If that is empty too, the person is not in this workspace — say so rather than substituting someone similar |
+| `--assignee: user "David" is ambiguous — 5 people match:` | The name matches several people. **This is the CLI refusing to guess, not a malfunction** | **Do not pick a candidate.** Narrow with `asana users list -q "David"` and ask the user which one. Retry with the full name, the email address, or the numeric ID |
+| `--project: project "Rocks" is ambiguous — 100 projects match:` | Same, for projects — 211 of this workspace's 1203 projects have "rocks" in the name | `asana projects list -q "Rocks"`, then retry with the full name or the GID. Ask if it is still unclear |
+| `--section: section "Q3 2026 Rocks" is ambiguous in "Lindris"` | Same, for sections — quarterly sections are usually prefixed variants of one another | `asana projects sections "Lindris"`, then retry with the full section name or its ID |
+| `section "X" still has 2 tasks — move them out first` | `projects sections delete` refusing a non-empty section. Deleting it would move those tasks to the project's default section, not delete them | Move the tasks first (`asana tasks move`), or pass `--force` if losing the heading is the intent. `--yes` skips the prompt but **not** this check |
+| `cannot confirm without a terminal: pass --yes` | `projects sections delete` needs confirmation and stdin is not a TTY | Add `--yes` once you are certain of the target |
+| `a destination is required: pass one of --first, --last, --before …` | `projects sections move` with no destination | Pick one; they are mutually exclusive |
+| `--assignee is required in non-interactive mode` | No assignee given and no terminal to prompt on | To assign, pass `-a "Name"` or `-a me`. **To create an unassigned task, pass `--unassigned`** (or `-a ""`). Never invent a sentinel like `-a "none"` — it will either error or, worse, match a real person whose name contains it |
 | `--project is required in non-interactive mode` | No project given and no terminal to prompt on | Pass `-p "Name"`, or `--no-project` for a workspace-level task with no project or section |
 | `[assignee unassigned] were all set` (or `[project no-project]`) | Contradictory flags | Naming someone and asking for nobody can't both hold; same for a project and no project |
 | `followers: Cannot write this property` | Using followers in update request body | Followers must be added via `AddFollowers` endpoint (handled in fork) |

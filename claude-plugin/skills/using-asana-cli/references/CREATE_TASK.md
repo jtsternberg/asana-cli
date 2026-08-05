@@ -12,16 +12,24 @@
 
 3. **Decide how the description is formatted.** A bulleted list, a hyperlink, bold text, or headings means `--markdown-notes` — `-m` would leave the markup literal. See "Descriptions" below.
 
-4. **Look things up only if you actually need to.** Every flag below takes a plain name, and the CLI resolves it (exact, then partial, case-insensitive). Skip these calls when the user gave you an exact name:
+4. **Look things up only if you actually need to.** Every flag below takes a plain
+   name, and the CLI resolves it case-insensitively: exact name (or email, or ID)
+   first, then a *unique* partial match. A partial that matches several things is
+   an **error listing the candidates**, never a guess — so a full name needs no
+   lookup, and a vague one fails loudly instead of writing to the wrong place.
 
    | You need a lookup when... | Command |
    |---|---|
    | The project name is a guess, or `-p` failed to resolve | `asana projects list -q "Project Name"` |
    | You don't know the section names | `asana projects sections "Project Name"` |
-   | The assignee is ambiguous | `asana users list` |
+   | You only have a first name, or a name came back ambiguous | `asana users list -q "David"` |
    | You need a numeric project GID (e.g. for `tasks search --project`) | `asana projects list -q "Name" --json` |
 
    Given an exact project name, `-p "Outgoing Tasks"` resolves on its own — a `projects list -q` call first is a wasted round trip.
+
+   **When a name comes back ambiguous, do not pick a candidate.** The list tells
+   you the options; it does not tell you which one the user meant. Five people are
+   named David in a workspace this size. Show the candidates and ask.
 
 5. **Rehearse with `--dry-run`.** It resolves assignee, project, section and the generated HTML for real, prints the exact request body, and creates nothing. This is the cheapest step in the list and it catches name mismatches, unavailable flags, and mis-converted markup before anything is written.
 
