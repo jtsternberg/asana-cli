@@ -9,6 +9,7 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/jtsternberg/asana-cli/internal/config"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/spf13/cobra"
@@ -75,7 +76,7 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	project, err := resolveProject(client, ws.ID, opts.ProjectName)
+	project, err := shared.ResolveProject(client, &asana.Workspace{ID: ws.ID}, opts.ProjectName)
 	if err != nil {
 		return err
 	}
@@ -86,27 +87,6 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	return displaySection(opts, project, section)
-}
-
-func resolveProject(client *asana.Client, workspaceID, nameOrID string) (*asana.Project, error) {
-	ws := &asana.Workspace{ID: workspaceID}
-	projects, err := ws.AllProjects(client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch projects: %w", err)
-	}
-
-	nameLower := strings.ToLower(nameOrID)
-	for _, p := range projects {
-		if strings.ToLower(p.Name) == nameLower || p.ID == nameOrID {
-			return p, nil
-		}
-	}
-	for _, p := range projects {
-		if strings.Contains(strings.ToLower(p.Name), nameLower) {
-			return p, nil
-		}
-	}
-	return nil, fmt.Errorf("project %q not found in workspace", nameOrID)
 }
 
 type jsonSection struct {

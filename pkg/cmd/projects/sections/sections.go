@@ -3,13 +3,15 @@ package sections
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
 	"github.com/jtsternberg/asana-cli/internal/config"
 	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/sections/create"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/sections/delete"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/sections/move"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/projects/shared"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/spf13/cobra"
@@ -52,6 +54,8 @@ func NewCmdSections(f factory.Factory, runF func(*SectionsOptions) error) *cobra
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
 
 	cmd.AddCommand(create.NewCmdCreate(f, nil))
+	cmd.AddCommand(delete.NewCmdDelete(f, nil))
+	cmd.AddCommand(move.NewCmdMove(f, nil))
 
 	return cmd
 }
@@ -72,44 +76,14 @@ func runSections(opts *SectionsOptions) error {
 		return fmt.Errorf("failed to initialize Asana client: %w", err)
 	}
 
-	ws := &asana.Workspace{ID: defaultWS.ID}
-	projects, err := ws.AllProjects(client)
+	project, err := shared.ResolveProject(client, &asana.Workspace{ID: defaultWS.ID}, opts.ProjectName)
 	if err != nil {
-		return fmt.Errorf("failed to fetch projects: %w", err)
+		return err
 	}
 
-	var project *asana.Project
-	nameLower := strings.ToLower(opts.ProjectName)
-	for _, p := range projects {
-		if strings.ToLower(p.Name) == nameLower || p.ID == opts.ProjectName {
-			project = p
-			break
-		}
-	}
-	if project == nil {
-		for _, p := range projects {
-			if strings.Contains(strings.ToLower(p.Name), nameLower) {
-				project = p
-				break
-			}
-		}
-	}
-	if project == nil {
-		return fmt.Errorf("project %q not found in workspace", opts.ProjectName)
-	}
-
-	sections := make([]*asana.Section, 0, 20)
-	options := &asana.Options{Limit: 100}
-	for {
-		batch, nextPage, err := project.Sections(client, options)
-		if err != nil {
-			return fmt.Errorf("failed to fetch sections: %w", err)
-		}
-		sections = append(sections, batch...)
-		if nextPage == nil || nextPage.Offset == "" {
-			break
-		}
-		options.Offset = nextPage.Offset
+	sections, err := shared.FetchAllSections(client, project)
+	if err != nil {
+		return err
 	}
 
 	return displaySections(opts, project, sections)

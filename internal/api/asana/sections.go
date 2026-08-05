@@ -66,8 +66,14 @@ func (p *Project) CreateSection(client *Client, section *SectionBase) (*Section,
 	return result, err
 }
 
+// SectionInsertRequest positions one section relative to another.
+//
+// The project deliberately has no field here: it travels in the request path,
+// and sending it in the body as well makes Asana reject the whole request with
+// "400: Duplicate field: project". Asana's own docs list `project` among the
+// body fields, so this is a documentation trap, not an obvious omission —
+// TestInsertSection_OmitsProjectFromBody guards it.
 type SectionInsertRequest struct {
-	Project       string `json:"project_gid"`
 	Section       string `json:"section"`
 	BeforeSection string `json:"before_section,omitempty"`
 	AfterSection  string `json:"after_section,omitempty"`
@@ -82,7 +88,9 @@ type SectionInsertRequest struct {
 func (p *Project) InsertSection(client *Client, request *SectionInsertRequest) error {
 	client.info("Moving section %s", request.Section)
 
-	err := client.post(fmt.Sprintf("projects/%s/sections/insert", p.ID), request, nil)
+	// The leading slash is required: getURL panics without it, so this call had
+	// never actually reached the API.
+	err := client.post(fmt.Sprintf("/projects/%s/sections/insert", p.ID), request, nil)
 	return err
 }
 

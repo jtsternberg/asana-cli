@@ -263,7 +263,7 @@ asana tasks search --help
 
 Most commands support `--json` for machine-readable output:
 - **Tasks:** `create`, `list`, `search`, `view`, `comments`
-- **Projects:** `list`, `sections`, `tasks`
+- **Projects:** `list`, `sections`, `sections create`, `sections move`, `sections delete`, `tasks`
 - **Users:** `list`
 - **Teams:** `list`
 - **Tags:** `list`
@@ -333,6 +333,31 @@ asana projects sections --help
 ```!
 asana projects sections create --help
 ```
+
+New sections are always appended to the **bottom** of the project. Use
+`asana projects sections move` to reposition one.
+
+### Reorder a section in a project
+
+```!
+asana projects sections move --help
+```
+
+### Delete a section from a project
+
+```!
+asana projects sections delete --help
+```
+
+Deleting a section does **not** delete its tasks — they move to the project's
+default section. The CLI still refuses a non-empty section unless you pass
+`--force`, because losing a heading silently reshuffles work.
+
+**Section names resolve strictly.** For both `move` and `delete`, an ambiguous
+name is an error listing every candidate and its ID, not a first-match guess.
+`"Q3 2026 Rocks"` against a project holding `Q3 2026 Rocks - Ben`,
+`Q3 2026 Rocks - Alyssa`, ... fails and tells you so. Pass the full name or the
+numeric section ID.
 
 ### List tasks in a project
 
