@@ -12,6 +12,7 @@ import (
 	"github.com/jtsternberg/asana-cli/pkg/format"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/jtsternberg/asana-cli/pkg/taskjson"
+	"github.com/jtsternberg/asana-cli/pkg/userref"
 	"github.com/spf13/cobra"
 )
 
@@ -126,8 +127,8 @@ func NewCmdSearch(f factory.Factory, runF func(*SearchOptions) error) *cobra.Com
 	cmd.Flags().StringSliceVar(&opts.TagsAll, "tags-all", nil, "Comma-separated list of tags to include in the search")
 	cmd.Flags().BoolVar(&opts.SortAscending, "sort-asc", false, "Sort results in ascending order")
 	cmd.Flags().StringVar(&opts.SortBy, "sort-by", "modified_at", "Sort results by one of: due_date, created_at, completed_at, likes or modified_at")
-	cmd.Flags().StringSliceVar(&opts.CreatorAny, "creator", nil, "Comma-separated list of creator user IDs or 'me' (e.g., me,1234)")
-	cmd.Flags().StringSliceVar(&opts.ExcludeCreator, "exclude-creator", nil, "Comma-separated list of user IDs to exclude from the search")
+	cmd.Flags().StringSliceVar(&opts.CreatorAny, "creator", nil, "Comma-separated list of creator names, user IDs, or 'me' (e.g., me,\"Tom Mendez\",1234)")
+	cmd.Flags().StringSliceVar(&opts.ExcludeCreator, "exclude-creator", nil, "Comma-separated list of creator names or user IDs to exclude from the search")
 	cmd.Flags().BoolVar(&opts.Blocked, "is-blocked", false, "Filter to tasks with incomplete dependencies")
 	cmd.Flags().StringVar(&opts.DueOnBefore, "due-on-before", "", "Filter to tasks due before a specific date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&opts.DueOnAfter, "due-on-after", "", "Filter to tasks due after a specific date (YYYY-MM-DD)")
@@ -159,22 +160,26 @@ func runSearch(opts *SearchOptions) error {
 		return err
 	}
 
-	// Resolve assignee names to IDs (the API only accepts IDs)
-	if len(opts.Assignee) > 0 {
-		resolved, err := resolveUserRefs(opts.Assignee, workspace.ID, client)
+	// Resolve every user-bearing flag to IDs — the API only accepts IDs, and the
+	// two exclude flags used to send raw names straight through.
+	resolver := userref.New(client, workspace.ID, userref.CachedOrFetched(cfg.UserID, client))
+	for _, target := range []struct {
+		flag string
+		refs *[]string
+	}{
+		{"--assignee", &opts.Assignee},
+		{"--exclude-assignee", &opts.ExcludeAssignee},
+		{"--creator", &opts.CreatorAny},
+		{"--exclude-creator", &opts.ExcludeCreator},
+	} {
+		if len(*target.refs) == 0 {
+			continue
+		}
+		resolved, err := resolveUserRefs(*target.refs, resolver, target.flag)
 		if err != nil {
 			return err
 		}
-		opts.Assignee = resolved
-	}
-
-	// Resolve creator names to IDs
-	if len(opts.CreatorAny) > 0 {
-		resolved, err := resolveUserRefs(opts.CreatorAny, workspace.ID, client)
-		if err != nil {
-			return err
-		}
-		opts.CreatorAny = resolved
+		*target.refs = resolved
 	}
 
 	query := &asana.SearchTasksQuery{
@@ -282,67 +287,26 @@ func renderText(opts *SearchOptions, tasks []*asana.Task) error {
 }
 
 // resolveUserRefs resolves a mix of user IDs, "me", and names to IDs.
-// Passes through values that look like IDs or "me", resolves names via workspace users.
-func resolveUserRefs(refs []string, workspaceID string, client *asana.Client) ([]string, error) {
-	var needsResolution []string
+//
+// "me" and bare gids pass straight through: Asana's search API accepts both, so
+// resolving them would only cost a request. Names go through pkg/userref, which
+// refuses to guess between several people of the same name rather than silently
+// searching for the wrong one.
+func resolveUserRefs(refs []string, resolver *userref.Resolver, flag string) ([]string, error) {
 	resolved := make([]string, len(refs))
 
 	for i, ref := range refs {
 		ref = strings.TrimSpace(ref)
-		if ref == "me" || isNumericID(ref) {
+		if ref == "" || userref.IsMe(ref) || userref.IsGID(ref) {
 			resolved[i] = ref
-		} else {
-			needsResolution = append(needsResolution, ref)
-			resolved[i] = "" // placeholder
-		}
-	}
-
-	if len(needsResolution) == 0 {
-		return resolved, nil
-	}
-
-	// Fetch workspace users for name matching
-	ws := &asana.Workspace{ID: workspaceID}
-	users, _, err := ws.Users(client, &asana.Options{})
-	if err != nil {
-		return nil, fmt.Errorf("cannot fetch users for name resolution: %w", err)
-	}
-
-	nameToID := make(map[string]string)
-	for _, ref := range needsResolution {
-		refLower := strings.ToLower(ref)
-		found := false
-
-		// Exact match
-		for _, u := range users {
-			if strings.ToLower(u.Name) == refLower {
-				nameToID[ref] = u.ID
-				found = true
-				break
-			}
-		}
-		if found {
 			continue
 		}
 
-		// Partial match
-		for _, u := range users {
-			if strings.Contains(strings.ToLower(u.Name), refLower) {
-				nameToID[ref] = u.ID
-				found = true
-				break
-			}
+		user, err := resolver.Resolve(ref)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", flag, err)
 		}
-		if !found {
-			return nil, fmt.Errorf("user %q not found in workspace", ref)
-		}
-	}
-
-	// Fill in resolved IDs
-	for i, ref := range refs {
-		if resolved[i] == "" {
-			resolved[i] = nameToID[ref]
-		}
+		resolved[i] = user.ID
 	}
 
 	return resolved, nil

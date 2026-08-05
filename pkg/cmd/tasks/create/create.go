@@ -16,6 +16,7 @@ import (
 	"github.com/jtsternberg/asana-cli/pkg/htmlnotes"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/jtsternberg/asana-cli/pkg/taskjson"
+	"github.com/jtsternberg/asana-cli/pkg/userref"
 	"github.com/spf13/cobra"
 )
 
@@ -231,10 +232,14 @@ func runCreate(opts *CreateOptions) error {
 		return fmt.Errorf("task name cannot be empty")
 	}
 
+	// One resolver for the whole run: the assignee and the followers come out of
+	// the same workspace user list, which used to be fetched twice.
+	resolver := userref.New(client, ws.ID, userref.CachedOrFetched(cfg.UserID, client))
+
 	// --- Assignee (optional: Asana allows an unassigned task) ---
 	var assignee *asana.User
 	if !opts.wantsUnassigned() {
-		assignee, err = getOrSelectAssignee(opts, ni, cfg, ws.ID, client)
+		assignee, err = getOrSelectAssignee(opts, ni, resolver)
 		if err != nil {
 			return err
 		}
@@ -269,7 +274,7 @@ func runCreate(opts *CreateOptions) error {
 	}
 
 	// --- Followers (optional) ---
-	followerIDs, followerNames, err := resolveFollowers(opts, cfg, ws.ID, client)
+	followerIDs, followerNames, err := resolveFollowers(opts, resolver)
 	if err != nil {
 		return err
 	}
@@ -399,7 +404,11 @@ func displayCreatedText(io *iostreams.IOStreams, outcome createOutcome) error {
 	return nil
 }
 
-func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, workspaceID string, client *asana.Client) (*asana.User, error) {
+func getOrSelectAssignee(
+	opts *CreateOptions,
+	ni bool,
+	resolver *userref.Resolver,
+) (*asana.User, error) {
 	// Decide whether there is anything to resolve before paying for the user
 	// list: with no name to match and no way to prompt, the fetch is wasted.
 	if opts.Assignee == "" && ni {
@@ -408,58 +417,17 @@ func getOrSelectAssignee(opts *CreateOptions, ni bool, cfg *config.Config, works
 		return nil, fmt.Errorf(`--assignee is required in non-interactive mode; pass --unassigned (or --assignee "") to create the task with no assignee`)
 	}
 
-	ws := &asana.Workspace{ID: workspaceID}
-	users, _, err := ws.Users(client)
-	if err != nil {
-		return nil, fmt.Errorf("cannot fetch users: %w", err)
+	if opts.Assignee != "" {
+		user, err := resolver.Resolve(opts.Assignee)
+		if err != nil {
+			return nil, fmt.Errorf("--assignee: %w", err)
+		}
+		return user, nil
 	}
 
-	if opts.Assignee != "" {
-		if strings.ToLower(opts.Assignee) == "me" {
-			if cfg.UserID == "" {
-				currentUser, err := client.CurrentUser()
-				if err != nil {
-					return nil, fmt.Errorf("failed to fetch current user: %w", err)
-				}
-				for _, user := range users {
-					if user.ID == currentUser.ID {
-						return user, nil
-					}
-				}
-				return nil, fmt.Errorf("could not find current user in workspace")
-			} else {
-				for _, user := range users {
-					if user.ID == cfg.UserID {
-						return user, nil
-					}
-				}
-				return nil, fmt.Errorf("could not find current user in workspace")
-			}
-		}
-
-		// Try exact name match
-		assigneeLower := strings.ToLower(opts.Assignee)
-		for _, user := range users {
-			if strings.ToLower(user.Name) == assigneeLower {
-				return user, nil
-			}
-		}
-
-		// Try partial/contains match
-		for _, user := range users {
-			if strings.Contains(strings.ToLower(user.Name), assigneeLower) {
-				return user, nil
-			}
-		}
-
-		// Try ID match
-		for _, user := range users {
-			if user.ID == opts.Assignee {
-				return user, nil
-			}
-		}
-
-		return nil, fmt.Errorf("assignee %q not found in workspace", opts.Assignee)
+	users, err := resolver.Users()
+	if err != nil {
+		return nil, err
 	}
 
 	names := format.MapToStrings(users, func(u *asana.User) string {
@@ -639,69 +607,23 @@ func getSection(opts *CreateOptions, ni bool, projectID string, client *asana.Cl
 	return sections[selected], nil
 }
 
-// resolveFollowers resolves follower names/IDs to user IDs.
+// resolveFollowers resolves follower names/IDs/"me" to user IDs.
 // Returns (followerIDs, followerNames, error).
-func resolveFollowers(opts *CreateOptions, cfg *config.Config, workspaceID string, client *asana.Client) ([]string, []string, error) {
+func resolveFollowers(opts *CreateOptions, resolver *userref.Resolver) ([]string, []string, error) {
 	if len(opts.Followers) == 0 {
 		return nil, nil, nil
 	}
 
-	ws := &asana.Workspace{ID: workspaceID}
-	users, _, err := ws.Users(client)
+	users, err := resolver.ResolveAll(opts.Followers)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot fetch users for follower resolution: %w", err)
+		return nil, nil, fmt.Errorf("--followers: %w", err)
 	}
 
-	var ids []string
-	var names []string
-
-	for _, f := range opts.Followers {
-		f = strings.TrimSpace(f)
-		if f == "" {
-			continue
-		}
-
-		found := false
-		fLower := strings.ToLower(f)
-
-		// Exact name match
-		for _, u := range users {
-			if strings.ToLower(u.Name) == fLower {
-				ids = append(ids, u.ID)
-				names = append(names, u.Name)
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-
-		// Partial/contains match
-		for _, u := range users {
-			if strings.Contains(strings.ToLower(u.Name), fLower) {
-				ids = append(ids, u.ID)
-				names = append(names, u.Name)
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-
-		// ID match
-		for _, u := range users {
-			if u.ID == f {
-				ids = append(ids, u.ID)
-				names = append(names, u.Name)
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil, nil, fmt.Errorf("follower %q not found in workspace", f)
-		}
+	ids := make([]string, 0, len(users))
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+		names = append(names, u.Name)
 	}
 
 	return ids, names, nil

@@ -16,6 +16,7 @@ import (
 	"github.com/jtsternberg/asana-cli/pkg/format"
 	"github.com/jtsternberg/asana-cli/pkg/htmlnotes"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
+	"github.com/jtsternberg/asana-cli/pkg/userref"
 	"github.com/spf13/cobra"
 )
 
@@ -264,19 +265,23 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	}
 	changes := append([]string{}, fieldChanges...)
 
+	// One resolver for every user reference this run touches — assignee, added
+	// followers and removed followers previously each refetched the user list.
+	resolver := userref.New(client, ws.ID, userref.CachedOrFetched(cfg.UserID, client))
+
 	if opts.Assignee != "" {
-		userID, err := resolveUserID(opts.Assignee, cfg, ws.ID, client)
+		user, err := resolver.Resolve(opts.Assignee)
 		if err != nil {
-			return err
+			return fmt.Errorf("--assignee: %w", err)
 		}
-		req.Assignee = userID
+		req.Assignee = user.ID
 		changes = append(changes, "assignee")
 	}
 
 	var followerIDs []string
 	if len(opts.Followers) > 0 {
 		var err error
-		followerIDs, _, err = resolveFollowerIDs(opts.Followers, cfg, ws.ID, client)
+		followerIDs, _, err = resolveFollowerRefs(opts.Followers, resolver, "--followers")
 		if err != nil {
 			return err
 		}
@@ -286,7 +291,7 @@ func runNonInteractiveUpdate(opts *UpdateOptions) error {
 	var removeFollowerIDs []string
 	if len(opts.RemoveFollowers) > 0 {
 		var err error
-		removeFollowerIDs, _, err = resolveFollowerIDs(opts.RemoveFollowers, cfg, ws.ID, client)
+		removeFollowerIDs, _, err = resolveFollowerRefs(opts.RemoveFollowers, resolver, "--remove-followers")
 		if err != nil {
 			return err
 		}
@@ -653,97 +658,22 @@ func parseDueDate(input string) (*asana.Date, error) {
 	return due, nil
 }
 
-func resolveUserID(name string, cfg *config.Config, workspaceID string, client *asana.Client) (string, error) {
-	ws := &asana.Workspace{ID: workspaceID}
-	users, _, err := ws.Users(client)
-	if err != nil {
-		return "", fmt.Errorf("cannot fetch users: %w", err)
-	}
-
-	if strings.ToLower(name) == "me" {
-		if cfg.UserID != "" {
-			return cfg.UserID, nil
-		}
-		currentUser, err := client.CurrentUser()
-		if err != nil {
-			return "", fmt.Errorf("failed to fetch current user: %w", err)
-		}
-		return currentUser.ID, nil
-	}
-
-	nameLower := strings.ToLower(name)
-	for _, u := range users {
-		if strings.ToLower(u.Name) == nameLower {
-			return u.ID, nil
-		}
-	}
-	for _, u := range users {
-		if strings.Contains(strings.ToLower(u.Name), nameLower) {
-			return u.ID, nil
-		}
-	}
-	for _, u := range users {
-		if u.ID == name {
-			return u.ID, nil
-		}
-	}
-
-	return "", fmt.Errorf("user %q not found in workspace", name)
-}
-
-func resolveFollowerIDs(followers []string, cfg *config.Config, workspaceID string, client *asana.Client) ([]string, []string, error) {
-	if len(followers) == 0 {
+// resolveFollowerRefs resolves follower names/IDs/"me" to (ids, names).
+func resolveFollowerRefs(refs []string, resolver *userref.Resolver, flag string) ([]string, []string, error) {
+	if len(refs) == 0 {
 		return nil, nil, nil
 	}
 
-	ws := &asana.Workspace{ID: workspaceID}
-	users, _, err := ws.Users(client)
+	users, err := resolver.ResolveAll(refs)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot fetch users: %w", err)
+		return nil, nil, fmt.Errorf("%s: %w", flag, err)
 	}
 
-	var ids, names []string
-	for _, f := range followers {
-		f = strings.TrimSpace(f)
-		if f == "" {
-			continue
-		}
-		fLower := strings.ToLower(f)
-		found := false
-
-		for _, u := range users {
-			if strings.ToLower(u.Name) == fLower {
-				ids = append(ids, u.ID)
-				names = append(names, u.Name)
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-		for _, u := range users {
-			if strings.Contains(strings.ToLower(u.Name), fLower) {
-				ids = append(ids, u.ID)
-				names = append(names, u.Name)
-				found = true
-				break
-			}
-		}
-		if found {
-			continue
-		}
-		for _, u := range users {
-			if u.ID == f {
-				ids = append(ids, u.ID)
-				names = append(names, u.Name)
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil, nil, fmt.Errorf("follower %q not found in workspace", f)
-		}
+	ids := make([]string, 0, len(users))
+	names := make([]string, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.ID)
+		names = append(names, u.Name)
 	}
 
 	return ids, names, nil

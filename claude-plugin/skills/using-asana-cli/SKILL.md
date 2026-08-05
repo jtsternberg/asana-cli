@@ -26,7 +26,7 @@ They are not interchangeable, and the difference is entirely about what protects
 | `html_notes` checked against Asana's allowlist *before* sending | yes, locally, naming the bad element | **no** — you get a 400 from Asana instead |
 | Markdown → rich text conversion | yes (`--markdown-notes`) | **no** — you hand-write the HTML |
 | Receipt confirming what was set | yes (`Description: rich text (…)`, `Assignee: …`) | **no** — you must re-read the task |
-| Resolve people/projects/sections by name | yes, partial matching | **no** — needs numeric GIDs |
+| Resolve people/projects/sections by name | yes — and it refuses to guess between several matches | **no** — needs numeric GIDs |
 
 **For writes, the CLI is the default.** Every guard rail in this skill lives in the CLI; on the connector they simply do not exist.
 
@@ -298,8 +298,8 @@ asana tasks view <task-id> --json | jq '.custom_fields[] | {name, display_value}
 # Filter tasks by name pattern (case-insensitive)
 asana tasks list --json | jq '.[] | select(.name | test("keyword"; "i"))'
 
-# Find a user by email
-asana users list --json | jq '.[] | select(.email | test("tom"; "i"))'
+# Find a user by name or email (-q filters server-side output, no jq needed)
+asana users list -q tom --json
 ```
 
 Text output also includes rich data: task list/search show assignee, due date, projects, and completion status alongside the task name and ID.
@@ -402,6 +402,37 @@ asana tasks search --project <project-id> --json \
 asana users list --help
 ```
 
+### Names are resolved strictly — never assume a first name is enough
+
+Anywhere a user goes (`--assignee`, `--followers`/`--cc`, `--remove-followers`,
+`tasks search --assignee`/`--creator`/`--exclude-*`), a reference matching more
+than one person is an **error**, not a pick. This workspace has 241 people and 22
+duplicated first names — five Davids, two Alyssas, two Tiagos.
+
+```
+$ asana tasks create -n "Ship it" -p Lindris -a David --non-interactive
+Error: --assignee: user "David" is ambiguous — 5 people match:
+  David Paternina <dpaternina@awesomemotive.com> (ID: 1201029052699387)
+  David Bisset <dbisset@awesomemotive.com> (ID: 1202420211942168)
+  ...
+```
+
+**When you get this, do not pick one.** The candidate list does not tell you
+which David the user meant, and a wrong assignee is invisible to them until
+someone notices the task in the wrong queue. Show the candidates and ask.
+
+Resolution order: `me` → numeric ID → exact name or email → unique partial name.
+So `--assignee me` is always the authenticated user (never a substring match into
+"Angie Meeker"), `--assignee "David Bisset"` and `--assignee dbisset@…` both
+work, and `--assignee 1202420211942168` is unambiguous by construction.
+
+To find out who a name could mean:
+
+```
+asana users list -q David          # names, emails and IDs of every match
+asana users list -q alyssa --json
+```
+
 ## Teams
 
 ### List teams
@@ -451,6 +482,8 @@ When the user describes an action in natural language, translate it to the corre
 | User says | CLI equivalent | Notes |
 |-----------|---------------|-------|
 | "CC Chris on this" / "add Chris to the task" / "loop in Chris" | `--followers "Chris"` or `--cc "Chris"` | `--cc` is a hidden alias for `--followers` |
+| "CC me" / "add me as a follower" / "loop me in" | `--followers me` or `--cc me` | The literal token `me` is reserved for the authenticated user, in every user-bearing flag |
+| A bare first name for a person ("assign this to David") | Resolve it first: `asana users list -q David` | With several matches the command errors instead of guessing. Ask which one — do not pick |
 | "due today" / "this is due today" | `--due today` | **NEVER** pre-resolve to a date string — pass the literal keyword |
 | "due tomorrow" | `--due tomorrow` | Same rule: pass the keyword, not a computed date |
 | "due next Friday" | `--due 2026-04-03` | CLI only supports `today`, `tomorrow`, or `YYYY-MM-DD` — you must compute this one |

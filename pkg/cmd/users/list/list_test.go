@@ -241,3 +241,43 @@ func assertStr(t *testing.T, m map[string]interface{}, key, want string) {
 		t.Errorf("JSON %q = %q; want %q", key, got, want)
 	}
 }
+
+// --- query filtering ---
+
+func usersFixture() []*asana.User {
+	return []*asana.User{
+		{ID: "U1", Name: "David Paternina", Email: "dpaternina@example.com"},
+		{ID: "U2", Name: "David Bisset", Email: "dbisset@example.com"},
+		{ID: "U3", Name: "Alyssa Rivera", Email: "alyssa.r@example.com"},
+		{ID: "U4", Name: "Tom Mendez", Email: "tom@example.com"},
+	}
+}
+
+func TestFilterUsers_MatchesNameCaseInsensitively(t *testing.T) {
+	got := filterUsers(usersFixture(), "david")
+	if len(got) != 2 {
+		t.Fatalf("got %d matches; want 2", len(got))
+	}
+	if got[0].ID != "U1" || got[1].ID != "U2" {
+		t.Errorf("got %q, %q; want U1, U2 (input order preserved)", got[0].ID, got[1].ID)
+	}
+}
+
+func TestFilterUsers_MatchesEmail(t *testing.T) {
+	got := filterUsers(usersFixture(), "dbisset@")
+	if len(got) != 1 || got[0].ID != "U2" {
+		t.Fatalf("got %v; want exactly U2", got)
+	}
+}
+
+func TestFilterUsers_NoMatches(t *testing.T) {
+	if got := filterUsers(usersFixture(), "nobody"); len(got) != 0 {
+		t.Errorf("got %d matches; want 0", len(got))
+	}
+}
+
+func TestFilterUsers_BlankQueryKeepsEveryone(t *testing.T) {
+	if got := filterUsers(usersFixture(), "  "); len(got) != 4 {
+		t.Errorf("got %d users; want all 4", len(got))
+	}
+}
