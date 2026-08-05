@@ -1,5 +1,59 @@
 # Changelog
 
+## [3.6.0] - 2026-08-05
+
+### Added
+
+- **`asana projects sections delete <project> <section>`** — there was no way to remove a section, so a workflow that moved every task out of one could not finish in the CLI. An agent doing exactly that decoded the CLI's own keyring token and called `DELETE /sections/{gid}` directly, seven times. Deleting a section does **not** delete its tasks, they move to the project's default section, but the command still refuses a non-empty section by default and names the task count; `--force` overrides, `--yes` skips the prompt for scripted use.
+
+- **`asana projects sections move <project> <section>`** — new sections are always appended to the bottom of a project, and reaching the top previously meant dragging in the web UI. Takes `--first`, `--last`, `--before <section>` or `--after <section>`. Already-in-position is a no-op rather than a request. Contrary to Asana's documentation, this works on list-layout projects, not just board-layout ones.
+
+- **`asana users list -q/--query <text>`** — filters by name or email and shows IDs, which is how you answer "which David?" when a name comes back ambiguous. Shows IDs implicitly, since picking one is the point.
+
+- **`asana tasks search --exclude-assignee` and `--exclude-creator` now accept names.** They previously passed whatever you gave them straight to an API that only accepts GIDs.
+
+### Changed
+
+- **Names now resolve strictly. A reference matching more than one object is an error, not a guess.** This is the headline change and it can break a script or agent that relied on the old behaviour.
+
+  Every project, section and user reference used to try an exact name match and then return the *first* substring match. Against this repository's reference workspace — 1203 projects, 241 people, 22 duplicated first names — `--project Rocks` matched 211 projects and silently created or moved the task into whichever one sorted first; `--assignee David` picked one of five Davids. A wrong assignee or a task in the wrong project is invisible until somebody notices it in the wrong queue, which is precisely what makes the silent version worse than a failure.
+
+  An ambiguous reference now errors and lists the candidates with their IDs (capped at ten, with a count of what was elided):
+
+  ```
+  $ asana tasks create -n "Ship it" -p Rocks -a David --non-interactive
+  Error: --project: project "Rocks" is ambiguous — 100 projects match:
+    Q1 2026 Rocks - SB (ID: 1212478655912226)
+    2023 Q4 Rocks (ID: 1205784903414470)
+    ...
+    …and 90 more
+  Re-run with the full project name or its ID (`asana projects list -q "Rocks"` lists the matches).
+  ```
+
+  An exact name still beats any number of partial matches, so `-p Lindris` resolves even alongside `Lindris Previous Rocks`. Resolution order is `me` → numeric ID → exact name or email → unique partial name. Email addresses are accepted for users, being the one guaranteed-unique handle. **If a command starts failing where it used to succeed, it was probably resolving to the wrong thing before** — narrow it with `asana projects list -q <text>`, `asana users list -q <text>`, or `asana projects sections <project>`.
+
+- **`me` is reserved in every flag that takes a user**, not just `--assignee`. `--followers me` and `--cc me` used to fall through to substring matching and resolve to real people whose names contain "me" — Angie Meeker, Tom Mendez. This was fixed in `tasks create` alone; it applies to `tasks update --followers`/`--remove-followers` and `tasks search` now too.
+
+- **A named project resolves through the typeahead API instead of enumerating the workspace.** `asana projects sections`, `tasks create --project` and `tasks move --project` each listed all 1203 projects to match one name: 5.5s for a section listing, and exposure to `400: The result is too large` on the unbounded first page. Interactive selection still enumerates, because a picker needs the list.
+
+### Fixed
+
+- **`projects tasks` reported completed tasks as incomplete, and showed no assignee or due date.** `/projects/{gid}/tasks` and `/sections/{gid}/tasks` return compact records — GID, name, resource type — and the listing asked for nothing more while rendering an assignee, a due date and a completion status. Every task therefore arrived with a nil assignee (printed `-`), no due date, and a nil `completed`, which renders as `Incomplete`. Anyone reading the listing to decide what was already done was told something false.
+
+- **`teams list` printed every description as empty** — 17 of 61 teams in the reference workspace have one. Same compact-record cause; the JSON output's `organization` was always `null` too.
+
+- **`tags list` printed every colour as `-`.** Same cause.
+
+- **`workspaces list` labelled organizations as "Workspace".** `is_organization` was never requested.
+
+- **`projects list -q` silently dropped the owner/team column** that the unfiltered listing showed, because the typeahead path requested no fields. The same data rendered as two different-looking answers depending on how you asked.
+
+- **`asana projects sections move` could never have worked.** Its API path was built without a leading slash, which panics before any request is made, and the request body carried the project GID that is already in the path, which Asana rejects with `400: Duplicate field: project` — a trap, since Asana's own documentation lists `project` among the body fields.
+
+- **`tags list` pagination could not paginate.** It built request options, advanced the offset on each pass, and then issued a call that ignored them — so it re-read page one. Masked only because Asana currently returns all 939 tags in a single page. `tag.Tasks` and `project.Sections` were likewise single unbounded calls, and every one of these now pages with a bounded page size.
+
+- **`tasks create` fetched the workspace user list twice and `tasks update` up to three times.** One resolver per run now.
+
 ## [3.5.0] - 2026-07-27
 
 ### Added
