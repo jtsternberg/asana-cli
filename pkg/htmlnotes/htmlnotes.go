@@ -152,14 +152,20 @@ func Normalize(s string) (string, error) {
 // Anything else is used verbatim. It performs no validation; callers pass the
 // result to Normalize.
 func Resolve(value string, stdin io.Reader) (string, error) {
+	return ResolveLabeled(value, "html notes", stdin)
+}
+
+// ResolveLabeled is Resolve with label naming the value in its errors, for
+// callers whose value is not a task description.
+func ResolveLabeled(value, label string, stdin io.Reader) (string, error) {
 	switch {
 	case value == "-":
 		if stdin == nil {
-			return "", fmt.Errorf("cannot read html notes from stdin: no input stream available")
+			return "", fmt.Errorf("cannot read %s from stdin: no input stream available", label)
 		}
 		data, err := io.ReadAll(stdin)
 		if err != nil {
-			return "", fmt.Errorf("failed to read html notes from stdin: %w", err)
+			return "", fmt.Errorf("failed to read %s from stdin: %w", label, err)
 		}
 		return string(data), nil
 	case strings.HasPrefix(value, "@@"):
@@ -168,7 +174,7 @@ func Resolve(value string, stdin io.Reader) (string, error) {
 		path := value[1:]
 		data, err := os.ReadFile(path)
 		if err != nil {
-			return "", fmt.Errorf("failed to read html notes from %s: %w", path, err)
+			return "", fmt.Errorf("failed to read %s from %s: %w", label, path, err)
 		}
 		return string(data), nil
 	default:

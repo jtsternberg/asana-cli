@@ -8,6 +8,7 @@ import (
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/pkg/cmd/tasks/comments/add"
 	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 	"github.com/spf13/cobra"
@@ -39,7 +40,9 @@ func NewCmdComments(f factory.Factory, runF func(*CommentsOptions) error) *cobra
 			Asana stores comments as "stories" alongside system-generated activity
 			(assignments, due-date changes, etc.). This command fetches the task's
 			stories and shows only the comment-type ones, printing the author, text,
-			and creation time of each.`),
+			and creation time of each.
+
+			To post a comment, use "asana tasks comments add".`),
 		Args: cobra.ExactArgs(1),
 		Example: heredoc.Doc(`
 			# View comments on a task
@@ -47,7 +50,10 @@ func NewCmdComments(f factory.Factory, runF func(*CommentsOptions) error) *cobra
 			$ asana ts comments 1234567890
 
 			# Output as JSON
-			$ asana tasks comments 1234567890 --json`),
+			$ asana tasks comments 1234567890 --json
+
+			# Post a comment
+			$ asana tasks comments add 1234567890 --text "Ready when you are."`),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			opts.TaskID = args[0]
 			if runF != nil {
@@ -58,6 +64,8 @@ func NewCmdComments(f factory.Factory, runF func(*CommentsOptions) error) *cobra
 	}
 
 	cmd.Flags().BoolVar(&opts.JSON, "json", false, "Output in JSON format")
+
+	cmd.AddCommand(add.NewCmdAdd(f, nil))
 
 	return cmd
 }

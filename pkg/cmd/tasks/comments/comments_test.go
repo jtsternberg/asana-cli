@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jtsternberg/asana-cli/internal/api/asana"
+	"github.com/jtsternberg/asana-cli/pkg/factory"
 	"github.com/jtsternberg/asana-cli/pkg/iostreams"
 )
 
@@ -120,5 +121,25 @@ func TestDisplayComments_JSONEmpty(t *testing.T) {
 	got := strings.TrimSpace(out.String())
 	if got != "[]" {
 		t.Errorf("empty JSON output = %q; want []", got)
+	}
+}
+
+// "add" is a subcommand of a command that also takes a positional task ID; a
+// task ID must still reach the reader, not be mistaken for a subcommand.
+func TestNewCmdComments_TaskIDStillRoutesToReader(t *testing.T) {
+	f, _, _ := factory.NewTestFactory()
+
+	var saw *CommentsOptions
+	cmd := NewCmdComments(f, func(opts *CommentsOptions) error {
+		saw = opts
+		return nil
+	})
+	cmd.SetArgs([]string{"1234567890", "--json"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if saw == nil || saw.TaskID != "1234567890" || !saw.JSON {
+		t.Fatalf("reader not invoked with the task ID; got %+v", saw)
 	}
 }

@@ -228,6 +228,28 @@ asana tasks comments 1234567890
 asana tasks comments 1234567890 --json | jq '.[] | {author, created_at, text}'
 ```
 
+### Add a comment to a task
+
+Post a comment with `asana tasks comments add <task-id>`. Give the text in exactly one of three forms: `--text` (plain), `--markdown-text` (converted to rich text) or `--html-text` (Asana-flavored HTML, same rules as `--html-notes`). Each takes `@file` or `-` (stdin) — use one for multi-line text; a leading literal `@` is written `@@`. Run `--dry-run` first to see the exact request without posting; on success it prints the new comment's story ID and the task URL. Supports `--json`. Posting is not idempotent: if a post fails ambiguously, check `asana tasks comments <task-id>` before retrying, or the comment appears twice.
+
+```!
+asana tasks comments add --help
+```
+
+```bash
+# Plain one-liner
+asana tasks comments add 1234567890 --text "Deployed to staging."
+
+# Multi-line: heredoc on stdin
+asana tasks comments add 1234567890 --text - <<'MSG'
+Deployed to staging.
+Smoke tests pass; prod tomorrow.
+MSG
+
+# Rich text with a link, rehearsed first
+asana tasks comments add 1234567890 --markdown-text "See [the PR](https://github.com/o/r/pull/1)" --dry-run
+```
+
 ### List vs Search
 
 Use **`tasks list`** for a quick view of tasks assigned to a user. Use **`tasks search`** for anything more flexible — filtering by creator, tags, blocked status, date ranges, or keyword.
@@ -262,7 +284,7 @@ asana tasks search --help
 ## Structured Output
 
 Most commands support `--json` for machine-readable output:
-- **Tasks:** `create`, `list`, `search`, `view`, `comments`
+- **Tasks:** `create`, `list`, `search`, `view`, `comments`, `comments add`
 - **Projects:** `list`, `sections`, `sections create`, `sections move`, `sections delete`, `tasks`
 - **Users:** `list`
 - **Teams:** `list`

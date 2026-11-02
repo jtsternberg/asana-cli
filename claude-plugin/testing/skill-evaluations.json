@@ -85,5 +85,18 @@
       "Does NOT reach for the raw REST API or the MCP connector \u2014 the CLI has a delete subcommand as of v3.6.0",
       "If the section still holds tasks, relays the refusal and the task count instead of passing --force unasked"
     ]
+  },
+  {
+    "id": "eval-08",
+    "skills": [
+      "using-asana-cli"
+    ],
+    "query": "Leave a comment on task 1234567890 telling Tom the VM is resized and he can go ahead. Two short paragraphs.",
+    "expected_behavior": [
+      "Uses asana tasks comments add 1234567890, passing multi-line text via --text - (stdin) or --text @file",
+      "Runs --dry-run first or otherwise posts exactly once",
+      "Reports the comment ID from the receipt",
+      "Does NOT reach for the raw REST API or the MCP connector"
+    ]
   }
 ]
