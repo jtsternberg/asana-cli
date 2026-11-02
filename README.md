@@ -137,6 +137,7 @@ asana tasks update <task-id> \
 ```bash
 asana tasks view <task-id>              # View task details (or omit ID for interactive)
 asana tasks comments <task-id>          # Read a task's comments (author + text + time)
+asana tasks comments add <task-id> --text "Done"   # Post a comment (--markdown-text/--html-text; @file or - for stdin)
 asana tasks list                        # List all your tasks
 asana tasks list --sort due-desc        # Sort by descending due date
 asana tasks search --assignee me        # Search your assigned tasks
@@ -149,7 +150,7 @@ Task IDs are shown in `list` and `search` output for easy use with other command
 
 ### JSON Output
 
-All task commands (`create`, `list`, `search`, `view`, `comments`) support `--json` for machine-readable output:
+All task commands (`create`, `list`, `search`, `view`, `comments`, `comments add`) support `--json` for machine-readable output:
 
 ```bash
 asana tasks create -n "Ship it" -a me -p "Outgoing Tasks" --json  # The created task
@@ -157,6 +158,7 @@ asana tasks list --json                 # JSON array of tasks
 asana tasks search --query "bug" --json # Search results as JSON
 asana tasks view <task-id> --json       # Full task details as JSON
 asana tasks comments <task-id> --json   # Task comments as JSON
+asana tasks comments add <task-id> -m "Done" --json  # The posted comment
 ```
 
 `create`, `list`, `search` and `view` all emit the same task shape, so one parser

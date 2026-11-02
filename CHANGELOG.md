@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **`asana tasks comments add <task-id>` posts a comment on a task.** The CLI
+  could read comments but not write them, so agents that needed to reply on a
+  task stalled. Text comes as `--text`, `--markdown-text` or `--html-text`
+  (validated like `--html-notes`), each accepting `@file` or `-` for stdin.
+  `--dry-run` prints the request without posting; the receipt names the new
+  comment's ID and the task URL, and `--json` returns it as JSON.
+
 ## [3.6.1] - 2026-08-05
 
 Documentation only — no CLI changes. v3.6.0 updated the bundled agent skill's

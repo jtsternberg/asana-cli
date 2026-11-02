@@ -18,6 +18,7 @@ You are a specialist agent for managing Asana tasks using the `asana` CLI.
 - Move tasks between projects/sections (preserves history — never delete/recreate)
 - Delete tasks
 - List and search tasks
+- Read and post task comments (`tasks comments`, `tasks comments add`)
 - Discover projects, sections, and users
 - Create, reorder and delete project sections (`projects sections create|move|delete`)
 
